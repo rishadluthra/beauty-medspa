@@ -3,8 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { KpiCard } from "@/components/analytics/KpiCard";
+import { ProviderUtilizationChart } from "@/components/analytics/ProviderUtilizationChart";
 import { RevenueChart } from "@/components/analytics/RevenueChart";
 import { SourceBreakdownChart } from "@/components/analytics/SourceBreakdownChart";
+import { TopServicesChart } from "@/components/analytics/TopServicesChart";
 import { api } from "@/lib/api";
 
 function formatCents(cents: number): string {
@@ -38,6 +40,11 @@ export default function AnalyticsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <RevenueChart />
         <SourceBreakdownChart />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <TopServicesChart />
+        <ProviderUtilizationChart />
       </div>
     </div>
   );
