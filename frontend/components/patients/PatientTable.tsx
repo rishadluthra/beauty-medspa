@@ -62,7 +62,7 @@ export function PatientTable() {
                   <th className="p-3 font-semibold">Email</th>
                   <th className="p-3 font-semibold">Source</th>
                   <th className="p-3 font-semibold">Joined</th>
-                  <th className="w-20 p-3 text-right font-semibold">Visits</th>
+                  <th className="w-20 p-3 font-semibold">Visits</th>
                   <th className="p-3 font-semibold">Last Visit</th>
                   <th className="w-24 p-3 text-right font-semibold">Spent</th>
                 </tr>
@@ -97,7 +97,7 @@ export function PatientTable() {
                       </span>
                     </td>
                     <td className="p-3">{formatDate(patient.created_date)}</td>
-                    <td className="p-3 text-right">{patient.appointment_count}</td>
+                    <td className="p-3">{patient.appointment_count}</td>
                     <td className="p-3">{formatDate(patient.last_appointment_date)}</td>
                     <td className="p-3 text-right">{formatCents(patient.total_spent_cents)}</td>
                   </tr>
