@@ -11,15 +11,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import { api } from "@/lib/api";
+import { STATUS_COLORS } from "@/lib/chartColors";
 import { formatLabel } from "@/lib/format";
-
-// Keyed by the RAW lowercase status strings the API returns (matches
-// Payment.status in models.py), not by any formatted/display text.
-const STATUS_COLORS: Record<string, string> = {
-  paid: "#16a34a",
-  pending: "#d97706",
-  failed: "#dc2626",
-};
 
 /** Fetches and renders the payment-status breakdown as a pie chart. */
 export function PaymentStatusChart() {
@@ -28,8 +21,8 @@ export function PaymentStatusChart() {
     queryFn: api.getPaymentStatus,
   });
 
-  if (isLoading) return <p className="text-slate-500">Loading payment status…</p>;
-  if (!data || data.length === 0) return <p className="text-slate-500">No payment data yet.</p>;
+  if (isLoading) return <p className="text-brand-sage">Loading payment status…</p>;
+  if (!data || data.length === 0) return <p className="text-brand-sage">No payment data yet.</p>;
 
   // `chartData` is a SEPARATE array from `data`, with formatLabel() applied
   // to `status` for display (e.g. "paid" -> "Paid"). It's what gets passed
@@ -37,22 +30,23 @@ export function PaymentStatusChart() {
   const chartData = data.map((entry) => ({ ...entry, status: formatLabel(entry.status) }));
 
   return (
-    <div className="rounded-lg border bg-white p-4">
-      <h2 className="mb-4 font-medium">Payment Status</h2>
+    <div className="rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
+      <h2 className="mb-4 font-medium text-brand-dark">Payment Status</h2>
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
           <Pie data={chartData} dataKey="count" nameKey="status" outerRadius={100} label>
             {/*
               IMPORTANT: this Cell mapping deliberately iterates the ORIGINAL
               raw `data` array (lowercase statuses), not `chartData` (which
-              has formatLabel() applied). STATUS_COLORS is keyed by the raw
+              has formatLabel() applied). STATUS_COLORS (from lib/chartColors,
+              shared with AppointmentStatusChart) is keyed by the raw
               lowercase strings ("paid", "pending", "failed"), so the lookup
               here must use `entry.status` from the unformatted array. If
               this were changed to map over `chartData` instead, every
               lookup would be against formatted text like "Paid" — which
               doesn't match any STATUS_COLORS key — and every slice would
-              silently fall through to the gray fallback (#64748b). Do not
-              "simplify" this to a single shared array.
+              silently fall through to the gray fallback. Do not "simplify"
+              this to a single shared array.
             */}
             {data.map((entry) => (
               <Cell key={entry.status} fill={STATUS_COLORS[entry.status] ?? "#64748b"} />

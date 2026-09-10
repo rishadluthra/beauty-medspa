@@ -21,15 +21,24 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-slate-50 text-slate-900">
+      <body className="min-h-screen bg-brand-bg text-brand-dark">
         <Providers>
-          <nav className="flex gap-6 border-b bg-white px-6 py-4">
-            <Link href="/patients" className="font-medium hover:text-teal-600">
-              Patients
-            </Link>
-            <Link href="/analytics" className="font-medium hover:text-teal-600">
-              Analytics
-            </Link>
+          <nav className="flex items-center justify-between border-b border-brand-dark/10 bg-white/80 px-6 py-4 backdrop-blur">
+            <span className="text-lg font-semibold tracking-tight">Beauty Med Spa</span>
+            <div className="flex gap-2">
+              <Link
+                href="/patients"
+                className="rounded-full px-4 py-1.5 text-sm font-medium transition-colors hover:bg-brand-gold/10 hover:text-brand-gold-dark"
+              >
+                Patients
+              </Link>
+              <Link
+                href="/analytics"
+                className="rounded-full px-4 py-1.5 text-sm font-medium transition-colors hover:bg-brand-gold/10 hover:text-brand-gold-dark"
+              >
+                Analytics
+              </Link>
+            </div>
           </nav>
           <main className="p-6">{children}</main>
         </Providers>

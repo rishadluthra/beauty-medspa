@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
+import { BRAND } from "@/lib/chartColors";
 
 /** Fetches and renders revenue-over-time as a line chart, in dollars. */
 export function RevenueChart() {
@@ -20,15 +21,15 @@ export function RevenueChart() {
     queryFn: api.getRevenueOverTime,
   });
 
-  if (isLoading) return <p className="text-slate-500">Loading revenue trend…</p>;
-  if (!data || data.length === 0) return <p className="text-slate-500">No revenue data yet.</p>;
+  if (isLoading) return <p className="text-brand-sage">Loading revenue trend…</p>;
+  if (!data || data.length === 0) return <p className="text-brand-sage">No revenue data yet.</p>;
 
   // Convert integer cents (backend convention) to dollars for display.
   const chartData = data.map((point) => ({ period: point.period, revenue: point.revenue_cents / 100 }));
 
   return (
-    <div className="rounded-lg border bg-white p-4">
-      <h2 className="mb-4 font-medium">Revenue Over Time</h2>
+    <div className="rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
+      <h2 className="mb-4 font-medium text-brand-dark">Revenue Over Time</h2>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />
@@ -44,7 +45,7 @@ export function RevenueChart() {
           */}
           <YAxis tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
           <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
-          <Line type="monotone" dataKey="revenue" stroke="#0f766e" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="revenue" stroke={BRAND.navyTeal} strokeWidth={2} dot={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>

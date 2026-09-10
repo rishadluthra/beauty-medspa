@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
+import { BRAND } from "@/lib/chartColors";
 import { formatLabel } from "@/lib/format";
 
 /** Fetches and renders the gender and age-group breakdowns as bar charts. */
@@ -20,7 +21,7 @@ export function DemographicsChart() {
     queryFn: api.getDemographics,
   });
 
-  if (isLoading) return <p className="text-slate-500">Loading demographics…</p>;
+  if (isLoading) return <p className="text-brand-sage">Loading demographics…</p>;
   if (!data) return null;
 
   // Map the raw fetched gender_breakdown into a separate `genderData` array
@@ -34,27 +35,27 @@ export function DemographicsChart() {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <div className="rounded-lg border bg-white p-4">
-        <h2 className="mb-4 font-medium">Patients by Gender</h2>
+      <div className="rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
+        <h2 className="mb-4 font-medium text-brand-dark">Patients by Gender</h2>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={genderData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="gender" />
             <YAxis />
             <Tooltip />
-            <Bar dataKey="count" fill="#7c3aed" />
+            <Bar dataKey="count" fill={BRAND.sage} />
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="rounded-lg border bg-white p-4">
-        <h2 className="mb-4 font-medium">Patients by Age Group</h2>
+      <div className="rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
+        <h2 className="mb-4 font-medium text-brand-dark">Patients by Age Group</h2>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={data.age_buckets}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="bucket" />
             <YAxis />
             <Tooltip />
-            <Bar dataKey="count" fill="#db2777" />
+            <Bar dataKey="count" fill={BRAND.rose} />
           </BarChart>
         </ResponsiveContainer>
       </div>

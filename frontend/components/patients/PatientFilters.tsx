@@ -37,17 +37,20 @@ interface Props {
  * re-query the API.
  */
 export function PatientFilters({ filters, onChange }: Props) {
+  const selectClassName =
+    "rounded-xl border border-brand-dark/15 bg-white px-3 py-2 text-sm text-brand-dark outline-none transition-colors focus:border-brand-gold focus:ring-2 focus:ring-brand-gold/30";
+
   return (
-    <div className="flex flex-wrap gap-3 rounded-lg border bg-white p-4">
+    <div className="flex flex-wrap gap-3 rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
       <input
         type="text"
         placeholder="Search name, email, or phone"
-        className="min-w-[200px] flex-1 rounded border px-3 py-2 text-sm"
+        className={`min-w-[200px] flex-1 ${selectClassName}`}
         defaultValue={filters.search ?? ""}
         onChange={(e) => onChange({ search: e.target.value })}
       />
       <select
-        className="rounded border px-3 py-2 text-sm"
+        className={selectClassName}
         value={filters.source ?? ""}
         onChange={(e) => onChange({ source: e.target.value || undefined })}
       >
@@ -65,7 +68,7 @@ export function PatientFilters({ filters, onChange }: Props) {
         ))}
       </select>
       <select
-        className="rounded border px-3 py-2 text-sm"
+        className={selectClassName}
         value={filters.gender ?? ""}
         onChange={(e) => onChange({ gender: e.target.value || undefined })}
       >
@@ -75,7 +78,7 @@ export function PatientFilters({ filters, onChange }: Props) {
         ))}
       </select>
       <select
-        className="rounded border px-3 py-2 text-sm"
+        className={selectClassName}
         value={filters.sort ?? "name"}
         onChange={(e) => onChange({ sort: e.target.value })}
       >

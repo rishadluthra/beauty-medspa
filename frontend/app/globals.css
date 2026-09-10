@@ -2,22 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Palette matched to decodahealth.com's own design system (warm cream
+ * background, near-black text) rather than a plain white/gray dashboard —
+ * see ATTENTION_TO_DETAIL.md for how these values were extracted from
+ * their site's compiled CSS.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #faf6f0;
+  --foreground: #1b211b;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+    "Noto Color Emoji";
+}
+
+h1,
+h2 {
+  letter-spacing: -0.03em;
 }
 
 @layer utilities {

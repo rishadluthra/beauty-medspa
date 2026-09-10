@@ -39,8 +39,8 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Analytics</h1>
 
-      {isLoading && <p className="text-slate-500">Loading overview…</p>}
-      {isError && <p className="text-red-600">Could not load analytics overview.</p>}
+      {isLoading && <p className="text-brand-sage">Loading overview…</p>}
+      {isError && <p className="text-rust">Could not load analytics overview.</p>}
 
       {overview && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">

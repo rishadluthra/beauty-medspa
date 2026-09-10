@@ -47,24 +47,24 @@ export function PatientTable() {
       */}
       <PatientFilters filters={filters} onChange={(next) => setFilters({ ...filters, ...next, page: 1 })} />
 
-      {isLoading && <p className="text-slate-500">Loading patients…</p>}
-      {isError && <p className="text-red-600">Could not load patients. Please try again.</p>}
+      {isLoading && <p className="text-brand-sage">Loading patients…</p>}
+      {isError && <p className="text-rust">Could not load patients. Please try again.</p>}
 
       {data && (
         <>
-          <div className="overflow-x-auto rounded-lg border bg-white">
+          <div className="overflow-x-auto rounded-2xl border border-brand-dark/10 bg-white shadow-md">
             <table className="w-full text-sm">
-              <thead className="bg-slate-100 text-left">
+              <thead className="bg-brand-gold/10 text-left text-brand-dark">
                 <tr>
-                  <th className="p-3">Name</th>
-                  <th className="p-3">Gender</th>
-                  <th className="p-3">Phone</th>
-                  <th className="p-3">Email</th>
-                  <th className="p-3">Source</th>
-                  <th className="p-3">Created</th>
-                  <th className="p-3"># Appointments</th>
-                  <th className="p-3">Last Appointment</th>
-                  <th className="p-3">Total Spent</th>
+                  <th className="p-3 font-semibold">Name</th>
+                  <th className="p-3 font-semibold">Gender</th>
+                  <th className="p-3 font-semibold">Phone</th>
+                  <th className="p-3 font-semibold">Email</th>
+                  <th className="p-3 font-semibold">Source</th>
+                  <th className="p-3 font-semibold">Created</th>
+                  <th className="p-3 font-semibold"># Appointments</th>
+                  <th className="p-3 font-semibold">Last Appointment</th>
+                  <th className="p-3 font-semibold">Total Spent</th>
                 </tr>
               </thead>
               <tbody>
@@ -77,13 +77,13 @@ export function PatientTable() {
                 */}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="p-6 text-center text-slate-500">
+                    <td colSpan={9} className="p-6 text-center text-brand-sage">
                       No patients match these filters.
                     </td>
                   </tr>
                 )}
                 {data.items.map((patient) => (
-                  <tr key={patient.id} className="border-t">
+                  <tr key={patient.id} className="border-t border-brand-dark/10 hover:bg-brand-gold/5">
                     <td className="p-3">{patient.first_name} {patient.last_name}</td>
                     <td className="p-3">{formatLabel(patient.gender)}</td>
                     <td className="p-3">{formatPhone(patient.phone)}</td>
@@ -107,19 +107,19 @@ export function PatientTable() {
           </div>
 
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">
+            <span className="text-brand-sage">
               Showing {(data.page - 1) * data.page_size + 1}–{Math.min(data.page * data.page_size, data.total)} of {data.total}
             </span>
             <div className="flex gap-2">
               <button
-                className="rounded border px-3 py-1 disabled:opacity-40"
+                className="rounded-full border border-brand-dark/15 px-4 py-1.5 transition-colors hover:border-brand-gold/40 hover:bg-brand-gold/10 disabled:opacity-40 disabled:hover:border-brand-dark/15 disabled:hover:bg-transparent"
                 disabled={data.page <= 1}
                 onClick={() => setFilters({ ...filters, page: data.page - 1 })}
               >
                 Previous
               </button>
               <button
-                className="rounded border px-3 py-1 disabled:opacity-40"
+                className="rounded-full border border-brand-dark/15 px-4 py-1.5 transition-colors hover:border-brand-gold/40 hover:bg-brand-gold/10 disabled:opacity-40 disabled:hover:border-brand-dark/15 disabled:hover:bg-transparent"
                 disabled={data.page * data.page_size >= data.total}
                 onClick={() => setFilters({ ...filters, page: data.page + 1 })}
               >
