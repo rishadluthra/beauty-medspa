@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api, type PatientQueryParams } from "@/lib/api";
 import { formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
+import { getSourceBadgeStyle } from "@/lib/sourceColors";
 import { PatientFilters } from "./PatientFilters";
 
 const PAGE_SIZE = 25;
@@ -87,7 +88,14 @@ export function PatientTable() {
                     <td className="p-3">{formatLabel(patient.gender)}</td>
                     <td className="p-3">{formatPhone(patient.phone)}</td>
                     <td className="p-3">{patient.email}</td>
-                    <td className="p-3">{formatLabel(patient.source)}</td>
+                    <td className="p-3">
+                      <span
+                        className="inline-block rounded-full px-2.5 py-1 text-xs font-medium text-white"
+                        style={getSourceBadgeStyle(patient.source)}
+                      >
+                        {formatLabel(patient.source)}
+                      </span>
+                    </td>
                     <td className="p-3">{formatDate(patient.created_date)}</td>
                     <td className="p-3">{patient.appointment_count}</td>
                     <td className="p-3">{formatDate(patient.last_appointment_date)}</td>
