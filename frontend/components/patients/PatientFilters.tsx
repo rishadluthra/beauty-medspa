@@ -1,6 +1,7 @@
 "use client";
 
 import type { PatientQueryParams } from "@/lib/api";
+import { formatLabel } from "@/lib/format";
 
 const SOURCES = ["in_person", "phone", "instagram", "tiktok", "google", "website"];
 const GENDERS = ["male", "female", "other"];
@@ -33,7 +34,7 @@ export function PatientFilters({ filters, onChange }: Props) {
       >
         <option value="">All sources</option>
         {SOURCES.map((s) => (
-          <option key={s} value={s}>{s}</option>
+          <option key={s} value={s}>{formatLabel(s)}</option>
         ))}
       </select>
       <select
@@ -43,7 +44,7 @@ export function PatientFilters({ filters, onChange }: Props) {
       >
         <option value="">All genders</option>
         {GENDERS.map((g) => (
-          <option key={g} value={g}>{g}</option>
+          <option key={g} value={g}>{formatLabel(g)}</option>
         ))}
       </select>
       <select
