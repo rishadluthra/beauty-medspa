@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Appointment, Patient, Payment
-from app.schemas.analytics import OverviewStats, RevenuePoint
+from app.models import Appointment, AppointmentService, Patient, Payment, Service
+from app.schemas.analytics import OverviewStats, RevenuePoint, SourceBreakdownItem, TopServiceItem
 
 
 async def get_overview_stats(db: AsyncSession) -> OverviewStats:
@@ -47,3 +47,47 @@ async def get_revenue_over_time(db: AsyncSession) -> list[RevenuePoint]:
     )
     rows = (await db.execute(query)).all()
     return [RevenuePoint(period=row.period, revenue_cents=int(row.revenue_cents)) for row in rows]
+
+
+async def get_patients_by_source(db: AsyncSession) -> list[SourceBreakdownItem]:
+    query = (
+        select(Patient.source, func.count(Patient.id).label("patient_count"))
+        .group_by(Patient.source)
+        .order_by(func.count(Patient.id).desc())
+    )
+    rows = (await db.execute(query)).all()
+    return [SourceBreakdownItem(source=row.source, patient_count=row.patient_count) for row in rows]
+
+
+async def get_top_services(db: AsyncSession, limit: int = 10) -> list[TopServiceItem]:
+    bookings = (
+        select(AppointmentService.service_id, func.count(AppointmentService.id).label("booking_count"))
+        .group_by(AppointmentService.service_id)
+        .subquery()
+    )
+    revenue = (
+        select(Payment.service_id, func.sum(Payment.amount).label("revenue_cents"))
+        .where(Payment.status == "paid")
+        .group_by(Payment.service_id)
+        .subquery()
+    )
+    query = (
+        select(
+            Service.id.label("service_id"),
+            Service.name.label("service_name"),
+            func.coalesce(bookings.c.booking_count, 0).label("booking_count"),
+            func.coalesce(revenue.c.revenue_cents, 0).label("revenue_cents"),
+        )
+        .outerjoin(bookings, bookings.c.service_id == Service.id)
+        .outerjoin(revenue, revenue.c.service_id == Service.id)
+        .order_by(func.coalesce(bookings.c.booking_count, 0).desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(query)).all()
+    return [
+        TopServiceItem(
+            service_id=row.service_id, service_name=row.service_name,
+            booking_count=row.booking_count, revenue_cents=int(row.revenue_cents),
+        )
+        for row in rows
+    ]

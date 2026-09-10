@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.repositories import analytics as analytics_repo
-from app.schemas.analytics import OverviewStats, RevenuePoint
+from app.schemas.analytics import OverviewStats, RevenuePoint, SourceBreakdownItem, TopServiceItem
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -16,3 +16,13 @@ async def overview(db: AsyncSession = Depends(get_db)) -> OverviewStats:
 @router.get("/revenue-over-time", response_model=list[RevenuePoint])
 async def revenue_over_time(db: AsyncSession = Depends(get_db)) -> list[RevenuePoint]:
     return await analytics_repo.get_revenue_over_time(db)
+
+
+@router.get("/patients-by-source", response_model=list[SourceBreakdownItem])
+async def patients_by_source(db: AsyncSession = Depends(get_db)) -> list[SourceBreakdownItem]:
+    return await analytics_repo.get_patients_by_source(db)
+
+
+@router.get("/top-services", response_model=list[TopServiceItem])
+async def top_services(db: AsyncSession = Depends(get_db)) -> list[TopServiceItem]:
+    return await analytics_repo.get_top_services(db)
