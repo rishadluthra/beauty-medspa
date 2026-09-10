@@ -4,18 +4,10 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, type PatientQueryParams } from "@/lib/api";
+import { formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
 import { PatientFilters } from "./PatientFilters";
 
 const PAGE_SIZE = 25;
-
-function formatCents(cents: number): string {
-  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  return new Date(value).toLocaleDateString();
-}
 
 export function PatientTable() {
   const [filters, setFilters] = useState<PatientQueryParams>({ page: 1, page_size: PAGE_SIZE, sort: "name" });
@@ -60,10 +52,10 @@ export function PatientTable() {
                 {data.items.map((patient) => (
                   <tr key={patient.id} className="border-t">
                     <td className="p-3">{patient.first_name} {patient.last_name}</td>
-                    <td className="p-3 capitalize">{patient.gender}</td>
-                    <td className="p-3">{patient.phone}</td>
+                    <td className="p-3">{formatLabel(patient.gender)}</td>
+                    <td className="p-3">{formatPhone(patient.phone)}</td>
                     <td className="p-3">{patient.email}</td>
-                    <td className="p-3 capitalize">{patient.source}</td>
+                    <td className="p-3">{formatLabel(patient.source)}</td>
                     <td className="p-3">{formatDate(patient.created_date)}</td>
                     <td className="p-3">{patient.appointment_count}</td>
                     <td className="p-3">{formatDate(patient.last_appointment_date)}</td>

@@ -58,4 +58,3 @@ Frontend has no automated test suite (see Future Enhancements) — verify manual
 - An automated frontend test suite (component/interaction tests) — currently relies on manual verification given the project deadline.
 - Materialized views or precomputed summary tables for the analytics endpoints, if data volume grows well beyond the current ~4,000 patients.
 - Access control on the deployed app if this were ever to serve real (non-synthetic) patient data.
-- Consistent phone number and date formatting, and consistent capitalization, across the patient table and analytics displays.

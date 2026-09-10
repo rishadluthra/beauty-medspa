@@ -12,10 +12,7 @@ import { SourceBreakdownChart } from "@/components/analytics/SourceBreakdownChar
 import { TopServicesChart } from "@/components/analytics/TopServicesChart";
 import { TopServicesRevenueChart } from "@/components/analytics/TopServicesRevenueChart";
 import { api } from "@/lib/api";
-
-function formatCents(cents: number): string {
-  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
+import { formatCents } from "@/lib/format";
 
 export default function AnalyticsPage() {
   const { data: overview, isLoading, isError } = useQuery({
