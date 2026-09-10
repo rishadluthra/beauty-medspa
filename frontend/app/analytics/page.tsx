@@ -1,5 +1,17 @@
 "use client";
 
+/**
+ * Analytics Dashboard page (`/analytics`) — the second of the two pages
+ * required by the spec. Composes a row of top-line KPI cards (fetched here,
+ * via `api.getOverview`) together with every analytics chart component.
+ *
+ * Each chart component (RevenueChart, SourceBreakdownChart, etc.) fetches
+ * its own data independently via its own `useQuery` call rather than
+ * receiving data as props from this page. That means one chart's slow
+ * query or fetch error doesn't block or break the others — each section of
+ * the dashboard loads and fails independently.
+ */
+
 import { useQuery } from "@tanstack/react-query";
 
 import { AppointmentStatusChart } from "@/components/analytics/AppointmentStatusChart";
@@ -14,7 +26,10 @@ import { TopServicesRevenueChart } from "@/components/analytics/TopServicesReven
 import { api } from "@/lib/api";
 import { formatCents } from "@/lib/format";
 
+/** Top-level route component for `/analytics`. */
 export default function AnalyticsPage() {
+  // KPI summary is fetched here (rather than inside a child component)
+  // since it feeds the row of KpiCards rendered directly by this page.
   const { data: overview, isLoading, isError } = useQuery({
     queryKey: ["analytics", "overview"],
     queryFn: api.getOverview,

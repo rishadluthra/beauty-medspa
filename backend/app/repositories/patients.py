@@ -1,3 +1,12 @@
+"""Repository functions for querying patients.
+
+Part of the data-access layer described in `app.repositories.__init__`:
+these are typed, parameterized, reusable query functions, not
+route-specific helpers. Routers call them, and the same functions are
+intended to be callable directly by a future AI/natural-language-query
+service as "tools" over the data.
+"""
+
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
@@ -9,6 +18,13 @@ from app.schemas.patient import PatientListItem, PatientListResponse
 
 @dataclass
 class PatientFilters:
+    """Optional filters for `list_patients`.
+
+    `search` matches (case-insensitively) against patient name, email, or
+    phone. `source` and `gender` are exact-match filters. All fields are
+    optional; omitted filters are simply not applied.
+    """
+
     search: str | None = None
     source: str | None = None
     gender: str | None = None
@@ -21,6 +37,28 @@ async def list_patients(
     page: int = 1,
     page_size: int = 25,
 ) -> PatientListResponse:
+    """Return a paginated, filtered, sorted page of patients with aggregates.
+
+    With ~4,000 patients in the dataset, filtering, sorting, and pagination
+    are all done server-side in SQL (WHERE/ORDER BY/OFFSET-LIMIT) rather
+    than fetching every patient and filtering in Python — this keeps the
+    query efficient regardless of table size.
+
+    Each patient row is enriched with three aggregates: appointment count,
+    lifetime spend (sum of *paid* payments only, in cents), and the most
+    recent appointment date. These are computed as three INDEPENDENT
+    `GROUP BY` subqueries (one per child table), each outer-joined 1:1 onto
+    `Patient`, rather than a single join across `Appointment` and `Payment`
+    directly. This avoids join fan-out: if a patient has, say, 3
+    appointments and 2 payments, a naive single join would produce 3 x 2 = 6
+    joined rows, and summing `Payment.amount` across those rows would count
+    each payment 3 times (over-counting revenue). Aggregating each child
+    table independently first, then joining the pre-aggregated results,
+    keeps the counts and sums correct.
+
+    Returns a `PatientListResponse` containing the page of items plus
+    total count (for pagination controls) and the echoed page/page_size.
+    """
     appointment_counts = (
         select(Appointment.patient_id, func.count(Appointment.id).label("appointment_count"))
         .group_by(Appointment.patient_id)
@@ -28,7 +66,7 @@ async def list_patients(
     )
     payment_totals = (
         select(Payment.patient_id, func.sum(Payment.amount).label("total_spent_cents"))
-        .where(Payment.status == "paid")
+        .where(Payment.status == "paid")  # cancelled/pending/failed payments never count toward lifetime spend
         .group_by(Payment.patient_id)
         .subquery()
     )
@@ -62,6 +100,7 @@ async def list_patients(
     if filters.gender:
         query = query.where(Patient.gender == filters.gender)
 
+    # Count matching rows (post-filter) for pagination metadata, without pulling all rows.
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
 
     sort_columns = {

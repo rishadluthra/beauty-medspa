@@ -1,10 +1,17 @@
 "use client";
 
+/**
+ * Analytics Dashboard horizontal bar chart showing appointment count per
+ * provider (i.e. how busy each staff member is). Data comes from
+ * GET /analytics/provider-utilization via `api.getProviderUtilization`.
+ */
+
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
 
+/** Fetches and renders provider appointment counts as a horizontal bar chart. */
 export function ProviderUtilizationChart() {
   const { data, isLoading } = useQuery({
     queryKey: ["analytics", "provider-utilization"],

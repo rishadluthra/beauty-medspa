@@ -1,3 +1,12 @@
+/**
+ * Root layout for the Next.js App Router app.
+ *
+ * Renders the shared chrome for every page: the top nav (Patients |
+ * Analytics) and the `Providers` wrapper (TanStack Query context) around
+ * `children`. Per-page content is provided by `app/patients/page.tsx` and
+ * `app/analytics/page.tsx`.
+ */
+
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -8,6 +17,7 @@ export const metadata: Metadata = {
   title: "Beauty Med Spa Dashboard",
 };
 
+/** Wraps every route with the shared nav bar and the `Providers` context. */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">

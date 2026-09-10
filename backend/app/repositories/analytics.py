@@ -1,3 +1,34 @@
+"""Repository functions backing the Analytics Dashboard.
+
+Part of the data-access layer described in `app.repositories.__init__`:
+these are typed, parameterized, reusable query functions, not
+route-specific helpers. Routers call them, and the same functions are
+intended to be callable directly by a future AI/natural-language-query
+service as "tools" over the data (e.g. "what was revenue last month?").
+
+Join fan-out avoidance (read this once, it applies throughout this file):
+several functions here need a count from one child table (e.g. how many
+times a service was booked, via `AppointmentService`) AND a revenue sum
+from a different child table (e.g. `Payment`) for the same parent row
+(a `Service`, `Provider`, ...). It is tempting to do this with a single
+query that joins the parent to both child tables at once, but SQL joins
+are Cartesian: if a service has 2 `AppointmentService` rows and 2 `Payment`
+rows, joining both onto `Service` in one query yields 2 x 2 = 4 result
+rows for that service, and summing `Payment.amount` across those 4 rows
+double-counts (or worse) the real revenue.
+
+Concrete example: a service is booked twice (2 `AppointmentService` rows)
+and has one $150 payment recorded against it. A single join of
+`AppointmentService` and `Payment` onto `Service` produces 2 rows (one per
+booking, each carrying the same $150 payment), so `SUM(payment.amount)`
+over those rows reports $300 — double the true $150. To avoid this, every
+function below computes each aggregate (count, sum) in its OWN
+independent `GROUP BY` subquery against a single child table, and only
+then outer-joins those pre-aggregated, 1-row-per-parent subqueries onto
+the parent table. That keeps each aggregate correct regardless of how many
+rows exist in the other child table.
+"""
+
 from datetime import datetime, timedelta
 
 from sqlalchemy import case, extract, func, select
@@ -8,9 +39,17 @@ from app.schemas.analytics import AgeBucketCount, AppointmentStatusItem, Demogra
 
 
 async def get_overview_stats(db: AsyncSession) -> OverviewStats:
+    """Return top-line KPIs for the analytics dashboard header.
+
+    Revenue and average-transaction figures only consider payments with
+    `status == "paid"` (cancelled/pending/failed payments never inflate
+    revenue). All money values are integer cents. `cancellation_rate` is
+    cancelled appointments / total appointments, rounded to 4 decimal
+    places (0.0 if there are no appointments).
+    """
     total_patients = (await db.execute(select(func.count(Patient.id)))).scalar_one()
 
-    paid = select(Payment.amount).where(Payment.status == "paid").subquery()
+    paid = select(Payment.amount).where(Payment.status == "paid").subquery()  # only paid payments count as revenue
     total_revenue = (await db.execute(select(func.coalesce(func.sum(paid.c.amount), 0)))).scalar_one()
     paid_count = (await db.execute(select(func.count()).select_from(paid))).scalar_one()
     avg_transaction = int(total_revenue / paid_count) if paid_count else 0
@@ -38,6 +77,12 @@ async def get_overview_stats(db: AsyncSession) -> OverviewStats:
 
 
 async def get_revenue_over_time(db: AsyncSession) -> list[RevenuePoint]:
+    """Return monthly revenue (in cents) as a time series, oldest first.
+
+    Buckets `Payment.date` by calendar month ("YYYY-MM"). Only payments
+    with `status == "paid"` are summed, so cancelled/pending/failed
+    payments don't appear as revenue.
+    """
     period = func.to_char(Payment.date, "YYYY-MM").label("period")
     query = (
         select(period, func.sum(Payment.amount).label("revenue_cents"))
@@ -50,6 +95,7 @@ async def get_revenue_over_time(db: AsyncSession) -> list[RevenuePoint]:
 
 
 async def get_patients_by_source(db: AsyncSession) -> list[SourceBreakdownItem]:
+    """Return patient counts grouped by marketing source, most common first."""
     query = (
         select(Patient.source, func.count(Patient.id).label("patient_count"))
         .group_by(Patient.source)
@@ -60,6 +106,16 @@ async def get_patients_by_source(db: AsyncSession) -> list[SourceBreakdownItem]:
 
 
 async def get_top_services(db: AsyncSession, limit: int = 10) -> list[TopServiceItem]:
+    """Return the most-booked services, with booking count and revenue.
+
+    Booking count comes from `AppointmentService` (how many times the
+    service was scheduled); revenue comes from `Payment` (sum of `amount`
+    for `status == "paid"` payments against that service). These are
+    computed as two INDEPENDENT `GROUP BY` subqueries and outer-joined
+    onto `Service` — see the module docstring for why a single join across
+    both child tables would double-count revenue. Ordered by booking count
+    descending, capped at `limit`. Revenue is in cents.
+    """
     bookings = (
         select(AppointmentService.service_id, func.count(AppointmentService.id).label("booking_count"))
         .group_by(AppointmentService.service_id)
@@ -67,7 +123,7 @@ async def get_top_services(db: AsyncSession, limit: int = 10) -> list[TopService
     )
     revenue = (
         select(Payment.service_id, func.sum(Payment.amount).label("revenue_cents"))
-        .where(Payment.status == "paid")
+        .where(Payment.status == "paid")  # only paid payments count as revenue
         .group_by(Payment.service_id)
         .subquery()
     )
@@ -94,6 +150,17 @@ async def get_top_services(db: AsyncSession, limit: int = 10) -> list[TopService
 
 
 async def get_provider_utilization(db: AsyncSession) -> list[ProviderUtilizationItem]:
+    """Return per-provider appointment counts and revenue, busiest first.
+
+    Appointment count comes from `AppointmentService` (how many
+    service-slots the provider performed); revenue comes from `Payment`
+    (sum of `amount` for `status == "paid"` payments attributed to that
+    provider). As in `get_top_services`, these are two INDEPENDENT
+    `GROUP BY` subqueries outer-joined 1:1 onto `Provider`, not a single
+    join across both child tables — see the module docstring for why that
+    matters (it would double-count revenue for providers with more than
+    one row in both child tables). Revenue is in cents.
+    """
     appointment_counts = (
         select(AppointmentService.provider_id, func.count(AppointmentService.id).label("appointment_count"))
         .group_by(AppointmentService.provider_id)
@@ -101,7 +168,7 @@ async def get_provider_utilization(db: AsyncSession) -> list[ProviderUtilization
     )
     revenue = (
         select(Payment.provider_id, func.sum(Payment.amount).label("revenue_cents"))
-        .where(Payment.status == "paid")
+        .where(Payment.status == "paid")  # only paid payments count as revenue
         .group_by(Payment.provider_id)
         .subquery()
     )
@@ -127,18 +194,27 @@ async def get_provider_utilization(db: AsyncSession) -> list[ProviderUtilization
 
 
 async def get_appointment_status_breakdown(db: AsyncSession) -> list[AppointmentStatusItem]:
+    """Return appointment counts grouped by status (pending/confirmed/cancelled)."""
     query = select(Appointment.status, func.count(Appointment.id).label("count")).group_by(Appointment.status)
     rows = (await db.execute(query)).all()
     return [AppointmentStatusItem(status=row.status, count=row.count) for row in rows]
 
 
 async def get_payment_status_breakdown(db: AsyncSession) -> list[PaymentStatusItem]:
+    """Return payment counts grouped by status (pending/paid/failed)."""
     query = select(Payment.status, func.count(Payment.id).label("count")).group_by(Payment.status)
     rows = (await db.execute(query)).all()
     return [PaymentStatusItem(status=row.status, count=row.count) for row in rows]
 
 
 async def get_patient_demographics(db: AsyncSession) -> DemographicsResponse:
+    """Return patient counts by gender and by age bucket.
+
+    Age is computed in SQL from `Patient.date_of_birth` (via `age(now(), dob)`)
+    and bucketed into fixed 10-year bands (18-24, 25-34, ..., 65+) using a
+    SQL `CASE` expression, so bucketing happens server-side rather than by
+    pulling every patient into Python.
+    """
     gender_rows = (await db.execute(
         select(Patient.gender, func.count(Patient.id).label("count")).group_by(Patient.gender)
     )).all()

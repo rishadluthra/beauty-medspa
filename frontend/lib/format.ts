@@ -1,12 +1,50 @@
+/**
+ * Display-formatting helpers shared across the frontend.
+ *
+ * These are pure, presentation-only functions — they never mutate the
+ * underlying data (money stays integer cents, dates stay ISO strings, etc.
+ * everywhere outside of this file); they just turn raw API values into the
+ * strings shown in the UI.
+ */
+
+/**
+ * Converts integer cents to a localized USD currency string (e.g. `1050` -> `"$10.50"`).
+ *
+ * This is the single place cents-to-dollars conversion happens for display —
+ * the backend and every TypeScript type keep money as integer cents
+ * everywhere else, so callers should never do this division themselves.
+ */
 export function formatCents(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+/**
+ * Formats an ISO date string for display, or `"—"` for a null/missing value
+ * (e.g. a patient with no appointments yet).
+ *
+ * Deliberately uses an explicit `{ year: "numeric", month: "short", day: "numeric" }`
+ * format instead of a bare `toLocaleDateString()` call. The bare version
+ * produces inconsistent digit widths depending on the date (e.g. `5/29/2025`
+ * vs `12/1/2024`), which looks ragged in a table column; the explicit format
+ * (`May 29, 2025`) is unambiguous and visually consistent regardless of the
+ * date's numeric width.
+ */
 export function formatDate(value: string | null): string {
   if (!value) return "—";
   return new Date(value).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
+/**
+ * Turns a snake_case enum-ish value into a human-readable, title-cased label
+ * (e.g. `"in_person"` -> `"In Person"`).
+ *
+ * This replaces an earlier approach that applied a CSS `capitalize` class
+ * directly to raw values. That was actually a bug: CSS `text-transform:
+ * capitalize` only capitalizes letters following whitespace, so it doesn't
+ * treat underscores as word boundaries — `in_person` rendered as `In_person`,
+ * not `In Person`. Do the word-splitting/casing here in JS instead of
+ * reaching for the CSS-only shortcut again.
+ */
 export function formatLabel(value: string): string {
   return value
     .split("_")
@@ -15,6 +53,27 @@ export function formatLabel(value: string): string {
     .join(" ");
 }
 
+/**
+ * Normalizes a raw phone number string into a single `(555) 123-4567` shape
+ * (with an optional `ext. N` suffix).
+ *
+ * The seed data contains phone numbers in at least four different raw
+ * formats: parens `(555) 123-4567`, dots `555.123.4567`, dashes
+ * `555-123-4567`, and numbers with a country-code prefix (`+1...` or
+ * `001...`) and/or an `x1234`-style extension marker. This function:
+ *  1. Splits off any `x`-prefixed extension before touching the digits.
+ *  2. Strips every non-digit character from the remaining number.
+ *  3. Drops a leading country-code prefix if the digit count implies one
+ *     (13 digits starting with `001`, or 11 digits starting with `1`).
+ *  4. Re-assembles the remaining 10 digits into `(555) 123-4567` and appends
+ *     `ext. N` if an extension was present.
+ *
+ * If, after all that, the digit count still isn't exactly 10, the function
+ * falls back to returning the original raw string unchanged. That fallback
+ * is a safety net for malformed input — it isn't exercised by the current
+ * seed data, but it's here so an unexpected format degrades gracefully
+ * instead of rendering garbage.
+ */
 export function formatPhone(value: string): string {
   const [main, extension] = value.split(/x/i);
   let digits = main.replace(/\D/g, "");

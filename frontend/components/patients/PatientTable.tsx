@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Patient Table page: a searchable, filterable, sortable, paginated table
+ * over the full patient list (~4,000 rows). All of that work happens on the
+ * server — this component never fetches the whole dataset. It depends on
+ * GET /patients (via `api.getPatients`) and renders whatever page of
+ * results comes back, plus the `PatientFilters` toolbar that drives it.
+ */
+
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -9,6 +17,16 @@ import { PatientFilters } from "./PatientFilters";
 
 const PAGE_SIZE = 25;
 
+/**
+ * Renders the patient list as a server-paginated table with filters.
+ *
+ * Important: this is fully server-side pagination/filtering/sorting, not a
+ * client-side slice of a bulk-fetched array. `filters` is the single source
+ * of truth for what to display; it's passed as the TanStack Query
+ * `queryKey`, so any change to it (search text, source/gender/sort,
+ * page number) is treated as a new query and triggers a fresh API call.
+ * The full ~4,000-patient set is never loaded into the browser at once.
+ */
 export function PatientTable() {
   const [filters, setFilters] = useState<PatientQueryParams>({ page: 1, page_size: PAGE_SIZE, sort: "name" });
 
@@ -19,6 +37,13 @@ export function PatientTable() {
 
   return (
     <div className="space-y-4">
+      {/*
+        Any filter/search/sort change resets page back to 1 (see the
+        `page: 1` merged in below). Without this, narrowing a filter could
+        leave the user "stuck" on e.g. page 5 when the new filter only
+        produces 2 pages of results, showing an empty page instead of the
+        top of the new result set.
+      */}
       <PatientFilters filters={filters} onChange={(next) => setFilters({ ...filters, ...next, page: 1 })} />
 
       {isLoading && <p className="text-slate-500">Loading patients…</p>}
@@ -42,6 +67,13 @@ export function PatientTable() {
                 </tr>
               </thead>
               <tbody>
+                {/*
+                  Empty-state row. colSpan={9} must match the number of
+                  <th> columns in the header above (Name, Gender, Phone,
+                  Email, Source, Created, # Appointments, Last Appointment,
+                  Total Spent) — if a column is ever added/removed, update
+                  this number too or the empty-state cell will misalign.
+                */}
                 {data.items.length === 0 && (
                   <tr>
                     <td colSpan={9} className="p-6 text-center text-slate-500">

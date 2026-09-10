@@ -1,3 +1,10 @@
+"""Tests for the analytics repository's top-level overview stats and revenue trend.
+
+Covers app.repositories.analytics.get_overview_stats (the summary tiles
+on the Analytics Dashboard: totals, average transaction, cancellation
+rate) and get_revenue_over_time (the revenue-by-month series).
+"""
+
 from datetime import datetime
 
 from app.repositories.analytics import get_overview_stats, get_revenue_over_time
@@ -5,6 +12,9 @@ from tests.factories import make_appointment, make_patient, make_payment, make_p
 
 
 async def test_overview_counts_only_paid_revenue_and_computes_cancellation_rate(db_session):
+    """Revenue/avg-transaction figures include only "paid" payments, and cancellation
+    rate is (cancelled appointments / total appointments) -- here 1 of 2 cancelled = 0.5.
+    """
     db_session.add_all([
         make_patient(id="pat_1"), make_provider(), make_service(),
         make_appointment(id="apt_1", patient_id="pat_1", status="confirmed"),
@@ -27,6 +37,7 @@ async def test_overview_counts_only_paid_revenue_and_computes_cancellation_rate(
 
 
 async def test_revenue_over_time_groups_paid_payments_by_month(db_session):
+    """Paid payments are bucketed and summed by calendar month (YYYY-MM), across month boundaries."""
     db_session.add_all([
         make_patient(id="pat_1"), make_provider(), make_service(),
         make_appointment(id="apt_1", patient_id="pat_1"),

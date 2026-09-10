@@ -1,11 +1,19 @@
 "use client";
 
+/**
+ * Analytics Dashboard demographics section: two side-by-side bar charts,
+ * patients by gender and patients by age group. Data comes from
+ * GET /analytics/demographics via `api.getDemographics`, which returns
+ * both `gender_breakdown` and `age_buckets` in one response.
+ */
+
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
 import { formatLabel } from "@/lib/format";
 
+/** Fetches and renders the gender and age-group breakdowns as bar charts. */
 export function DemographicsChart() {
   const { data, isLoading } = useQuery({
     queryKey: ["analytics", "demographics"],
@@ -15,6 +23,13 @@ export function DemographicsChart() {
   if (isLoading) return <p className="text-slate-500">Loading demographics…</p>;
   if (!data) return null;
 
+  // Map the raw fetched gender_breakdown into a separate `genderData` array
+  // with formatLabel() applied to `gender` (e.g. "male" -> "Male"). Recharts
+  // reads its axis/tooltip labels straight from this field, so doing the
+  // transform once here gets human-readable text everywhere in the chart
+  // without per-component formatter callbacks. (age_buckets needs no such
+  // transform — its `bucket` values are already display-ready strings like
+  // "18-24".)
   const genderData = data.gender_breakdown.map((entry) => ({ ...entry, gender: formatLabel(entry.gender) }));
 
   return (
