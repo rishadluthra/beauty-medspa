@@ -14,5 +14,5 @@ class Appointment(Base):
     status: Mapped[str] = mapped_column(String, nullable=False, index=True)
     created_date: Mapped[datetime] = mapped_column(nullable=False)
 
-    # Relationship to Patient
+    # Relationship to Patient for SQLAlchemy async session flush ordering
     patient: Mapped["Patient"] = relationship("Patient", foreign_keys=[patient_id])
