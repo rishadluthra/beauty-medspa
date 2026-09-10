@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 
@@ -13,3 +13,6 @@ class Appointment(Base):
     patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String, nullable=False, index=True)
     created_date: Mapped[datetime] = mapped_column(nullable=False)
+
+    # Relationship to Patient
+    patient: Mapped["Patient"] = relationship("Patient", foreign_keys=[patient_id])

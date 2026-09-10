@@ -13,7 +13,7 @@ async def db_session():
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
     async with session_factory() as session:
         yield session
 
