@@ -2805,6 +2805,283 @@ git commit -m "feat(frontend): add appointment status and demographics charts, c
 
 ---
 
+## Task 14b: Payment status breakdown and top-services revenue view
+
+> **Inserted post-hoc during Task 14's review.** The design doc's "Client question → Dashboard content" table (docs/superpowers/specs/2026-09-09-patient-dashboard-design.md) promises two pieces of content that never made it into the design doc's own concrete "Endpoints" list, and were therefore never scoped into any of Tasks 5-14: a payment status breakdown (paid/pending/failed), and a top-services view by revenue (not just booking volume — `TopServiceItem.revenue_cents` already exists in the schema/API, it's just never charted). This task closes both gaps using the exact same patterns already established and reviewed in Tasks 7 (appointment status) and 13 (top-services chart).
+
+**Files:**
+- Modify: `backend/app/schemas/analytics.py`
+- Modify: `backend/app/repositories/analytics.py`
+- Modify: `backend/app/routers/analytics.py`
+- Create: `backend/tests/test_analytics_payment_status.py`
+- Modify: `frontend/lib/types.ts`
+- Modify: `frontend/lib/api.ts`
+- Create: `frontend/components/analytics/PaymentStatusChart.tsx`
+- Create: `frontend/components/analytics/TopServicesRevenueChart.tsx`
+- Modify: `frontend/app/analytics/page.tsx`
+
+**Interfaces:**
+- Produces: `get_payment_status_breakdown(db) -> list[PaymentStatusItem]`, `GET /api/analytics/payment-status`, `api.getPaymentStatus()`, `PaymentStatusChart`, `TopServicesRevenueChart`.
+
+- [ ] **Step 1: Add to `backend/app/schemas/analytics.py`**
+
+```python
+class PaymentStatusItem(BaseModel):
+    status: str
+    count: int
+```
+
+- [ ] **Step 2: Write the failing test — `backend/tests/test_analytics_payment_status.py`**
+
+```python
+from app.repositories.analytics import get_payment_status_breakdown
+from tests.factories import make_appointment, make_patient, make_payment, make_provider, make_service
+
+
+async def test_payment_status_breakdown_counts_each_status(db_session):
+    db_session.add_all([
+        make_patient(id="pat_1"), make_provider(), make_service(),
+        make_appointment(id="apt_1", patient_id="pat_1"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_payment(id="pay_1", status="paid"),
+        make_payment(id="pay_2", status="pending"),
+        make_payment(id="pay_3", status="pending"),
+        make_payment(id="pay_4", status="failed"),
+    ])
+    await db_session.commit()
+
+    rows = await get_payment_status_breakdown(db_session)
+
+    assert {r.status: r.count for r in rows} == {"paid": 1, "pending": 2, "failed": 1}
+```
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `pytest tests/test_analytics_payment_status.py -v`
+Expected: FAIL — `ImportError: cannot import name 'get_payment_status_breakdown'`
+
+- [ ] **Step 4: Add to `backend/app/repositories/analytics.py`**
+
+```python
+async def get_payment_status_breakdown(db: AsyncSession) -> list[PaymentStatusItem]:
+    query = select(Payment.status, func.count(Payment.id).label("count")).group_by(Payment.status)
+    rows = (await db.execute(query)).all()
+    return [PaymentStatusItem(status=row.status, count=row.count) for row in rows]
+```
+
+Merge `PaymentStatusItem` into the existing `from app.schemas.analytics import ...` line. `Payment` and `func`/`select` are already imported in this file from earlier tasks.
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `pytest tests/test_analytics_payment_status.py -v`
+Expected: PASS
+
+- [ ] **Step 6: Add to `backend/app/routers/analytics.py`**
+
+```python
+@router.get("/payment-status", response_model=list[PaymentStatusItem])
+async def payment_status(db: AsyncSession = Depends(get_db)) -> list[PaymentStatusItem]:
+    return await analytics_repo.get_payment_status_breakdown(db)
+```
+
+Merge `PaymentStatusItem` into the existing schema import line.
+
+- [ ] **Step 7: Run the full backend test suite**
+
+Run: `pytest -v`
+Expected: all tests PASS (14 total: 13 pre-existing + 1 new)
+
+- [ ] **Step 8: Add to `frontend/lib/types.ts`**
+
+```typescript
+export interface PaymentStatusItem {
+  status: string;
+  count: number;
+}
+```
+
+- [ ] **Step 9: Add to `frontend/lib/api.ts`**
+
+Add `PaymentStatusItem` to the existing type import line, and add to the `api` object:
+
+```typescript
+  getPaymentStatus: () => apiGet<PaymentStatusItem[]>("/api/analytics/payment-status"),
+```
+
+- [ ] **Step 10: Write `frontend/components/analytics/PaymentStatusChart.tsx`**
+
+```tsx
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+
+import { api } from "@/lib/api";
+
+const STATUS_COLORS: Record<string, string> = {
+  paid: "#16a34a",
+  pending: "#d97706",
+  failed: "#dc2626",
+};
+
+export function PaymentStatusChart() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["analytics", "payment-status"],
+    queryFn: api.getPaymentStatus,
+  });
+
+  if (isLoading) return <p className="text-slate-500">Loading payment status…</p>;
+  if (!data || data.length === 0) return <p className="text-slate-500">No payment data yet.</p>;
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <h2 className="mb-4 font-medium">Payment Status</h2>
+      <ResponsiveContainer width="100%" height={280}>
+        <PieChart>
+          <Pie data={data} dataKey="count" nameKey="status" outerRadius={100} label>
+            {data.map((entry) => (
+              <Cell key={entry.status} fill={STATUS_COLORS[entry.status] ?? "#64748b"} />
+            ))}
+          </Pie>
+          <Tooltip />
+          <Legend />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 11: Write `frontend/components/analytics/TopServicesRevenueChart.tsx`**
+
+This reuses the same `api.getTopServices` data Task 13's `TopServicesChart` already fetches (same query key, so TanStack Query dedupes the network request), just re-sorted by revenue instead of booking count. Uses the same `tickFormatter`/`formatter` cast pattern already established and reviewed in Task 12's `RevenueChart` (Recharts' actual types don't accept a plain `number`-typed callback parameter).
+
+```tsx
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
+import { api } from "@/lib/api";
+
+export function TopServicesRevenueChart() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["analytics", "top-services"],
+    queryFn: api.getTopServices,
+  });
+
+  if (isLoading) return <p className="text-slate-500">Loading top services…</p>;
+  if (!data || data.length === 0) return <p className="text-slate-500">No service data yet.</p>;
+
+  const chartData = [...data]
+    .sort((a, b) => b.revenue_cents - a.revenue_cents)
+    .map((item) => ({ service_name: item.service_name, revenue: item.revenue_cents / 100 }));
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <h2 className="mb-4 font-medium">Top Services by Revenue</h2>
+      <ResponsiveContainer width="100%" height={320}>
+        <BarChart data={chartData} layout="vertical" margin={{ left: 80 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis type="number" tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
+          <YAxis type="category" dataKey="service_name" width={140} />
+          <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
+          <Bar dataKey="revenue" fill="#0891b2" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 12: Modify `frontend/app/analytics/page.tsx`** (final version — full file)
+
+```tsx
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+
+import { AppointmentStatusChart } from "@/components/analytics/AppointmentStatusChart";
+import { DemographicsChart } from "@/components/analytics/DemographicsChart";
+import { KpiCard } from "@/components/analytics/KpiCard";
+import { PaymentStatusChart } from "@/components/analytics/PaymentStatusChart";
+import { ProviderUtilizationChart } from "@/components/analytics/ProviderUtilizationChart";
+import { RevenueChart } from "@/components/analytics/RevenueChart";
+import { SourceBreakdownChart } from "@/components/analytics/SourceBreakdownChart";
+import { TopServicesChart } from "@/components/analytics/TopServicesChart";
+import { TopServicesRevenueChart } from "@/components/analytics/TopServicesRevenueChart";
+import { api } from "@/lib/api";
+
+function formatCents(cents: number): string {
+  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+export default function AnalyticsPage() {
+  const { data: overview, isLoading, isError } = useQuery({
+    queryKey: ["analytics", "overview"],
+    queryFn: api.getOverview,
+  });
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold">Analytics</h1>
+
+      {isLoading && <p className="text-slate-500">Loading overview…</p>}
+      {isError && <p className="text-red-600">Could not load analytics overview.</p>}
+
+      {overview && (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+          <KpiCard label="Total Patients" value={overview.total_patients.toLocaleString()} />
+          <KpiCard label="Total Revenue" value={formatCents(overview.total_revenue_cents)} />
+          <KpiCard label="Total Appointments" value={overview.total_appointments.toLocaleString()} />
+          <KpiCard label="Avg. Transaction" value={formatCents(overview.avg_transaction_cents)} />
+          <KpiCard label="New Patients (30d)" value={overview.new_patients_last_30_days.toLocaleString()} />
+          <KpiCard label="Cancellation Rate" value={`${(overview.cancellation_rate * 100).toFixed(1)}%`} />
+        </div>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <RevenueChart />
+        <SourceBreakdownChart />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <TopServicesChart />
+        <ProviderUtilizationChart />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <TopServicesRevenueChart />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <AppointmentStatusChart />
+        <PaymentStatusChart />
+      </div>
+
+      <DemographicsChart />
+    </div>
+  );
+}
+```
+
+Note this also fixes a pre-existing layout oddity: Task 14 left `AppointmentStatusChart` alone in a 2-column grid row; it's now paired with the new `PaymentStatusChart`.
+
+- [ ] **Step 13: Manual verification**
+
+Reload `/analytics`. Confirm the new "Top Services by Revenue" chart and "Payment Status" pie both render with real data, and the page now fully matches every row of the design doc's "Client question → Dashboard content" table.
+
+- [ ] **Step 14: Commit**
+
+```bash
+git add backend/app/schemas/analytics.py backend/app/repositories/analytics.py backend/app/routers/analytics.py backend/tests/test_analytics_payment_status.py frontend/lib/types.ts frontend/lib/api.ts frontend/components/analytics/PaymentStatusChart.tsx frontend/components/analytics/TopServicesRevenueChart.tsx frontend/app/analytics/page.tsx
+git commit -m "feat: add payment status breakdown and top-services revenue view, closing design-doc coverage gap"
+```
+
+---
+
 ## Task 15: Load seed data locally and deploy backend to Railway
 
 **Files:**
