@@ -3,6 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { KpiCard } from "@/components/analytics/KpiCard";
+import { RevenueChart } from "@/components/analytics/RevenueChart";
+import { SourceBreakdownChart } from "@/components/analytics/SourceBreakdownChart";
 import { api } from "@/lib/api";
 
 function formatCents(cents: number): string {
@@ -32,6 +34,11 @@ export default function AnalyticsPage() {
           <KpiCard label="Cancellation Rate" value={`${(overview.cancellation_rate * 100).toFixed(1)}%`} />
         </div>
       )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <RevenueChart />
+        <SourceBreakdownChart />
+      </div>
     </div>
   );
 }
