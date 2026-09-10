@@ -61,19 +61,19 @@ export function PatientTable() {
                   <th className="p-3 font-semibold">Phone</th>
                   <th className="p-3 font-semibold">Email</th>
                   <th className="p-3 font-semibold">Source</th>
-                  <th className="p-3 font-semibold">Created</th>
-                  <th className="p-3 font-semibold"># Appointments</th>
-                  <th className="p-3 font-semibold">Last Appointment</th>
-                  <th className="p-3 font-semibold">Total Spent</th>
+                  <th className="p-3 font-semibold">Joined</th>
+                  <th className="w-20 p-3 text-right font-semibold">Visits</th>
+                  <th className="p-3 font-semibold">Last Visit</th>
+                  <th className="w-24 p-3 text-right font-semibold">Spent</th>
                 </tr>
               </thead>
               <tbody className="text-brand-dark">
                 {/*
                   Empty-state row. colSpan={9} must match the number of
                   <th> columns in the header above (Name, Gender, Phone,
-                  Email, Source, Created, # Appointments, Last Appointment,
-                  Total Spent) — if a column is ever added/removed, update
-                  this number too or the empty-state cell will misalign.
+                  Email, Source, Joined, Visits, Last Visit, Spent) — if a
+                  column is ever added/removed, update this number too or
+                  the empty-state cell will misalign.
                 */}
                 {data.items.length === 0 && (
                   <tr>
@@ -97,9 +97,9 @@ export function PatientTable() {
                       </span>
                     </td>
                     <td className="p-3">{formatDate(patient.created_date)}</td>
-                    <td className="p-3">{patient.appointment_count}</td>
+                    <td className="p-3 text-right">{patient.appointment_count}</td>
                     <td className="p-3">{formatDate(patient.last_appointment_date)}</td>
-                    <td className="p-3">{formatCents(patient.total_spent_cents)}</td>
+                    <td className="p-3 text-right">{formatCents(patient.total_spent_cents)}</td>
                   </tr>
                 ))}
               </tbody>

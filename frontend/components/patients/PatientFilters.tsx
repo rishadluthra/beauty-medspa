@@ -38,7 +38,7 @@ interface Props {
  */
 export function PatientFilters({ filters, onChange }: Props) {
   const selectClassName =
-    "rounded-xl border border-brand-dark/15 bg-white px-3 py-2 text-sm text-brand-dark outline-none transition-colors focus:border-brand-gold focus:ring-2 focus:ring-brand-gold/30";
+    "rounded-xl border border-brand-dark/20 bg-brand-dark px-3 py-2 text-sm text-brand-bg outline-none transition-colors placeholder:text-brand-bg/50 focus:border-brand-gold focus:ring-2 focus:ring-brand-gold/30";
 
   return (
     <div className="flex flex-wrap gap-3 rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
