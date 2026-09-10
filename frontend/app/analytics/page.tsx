@@ -2,6 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { AppointmentStatusChart } from "@/components/analytics/AppointmentStatusChart";
+import { DemographicsChart } from "@/components/analytics/DemographicsChart";
 import { KpiCard } from "@/components/analytics/KpiCard";
 import { ProviderUtilizationChart } from "@/components/analytics/ProviderUtilizationChart";
 import { RevenueChart } from "@/components/analytics/RevenueChart";
@@ -46,6 +48,12 @@ export default function AnalyticsPage() {
         <TopServicesChart />
         <ProviderUtilizationChart />
       </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <AppointmentStatusChart />
+      </div>
+
+      <DemographicsChart />
     </div>
   );
 }
