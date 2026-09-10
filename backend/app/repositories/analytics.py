@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Appointment, AppointmentService, Patient, Payment, Service
-from app.schemas.analytics import OverviewStats, RevenuePoint, SourceBreakdownItem, TopServiceItem
+from app.models import Appointment, AppointmentService, Patient, Payment, Provider, Service
+from app.schemas.analytics import AppointmentStatusItem, OverviewStats, ProviderUtilizationItem, RevenuePoint, SourceBreakdownItem, TopServiceItem
 
 
 async def get_overview_stats(db: AsyncSession) -> OverviewStats:
@@ -91,3 +91,42 @@ async def get_top_services(db: AsyncSession, limit: int = 10) -> list[TopService
         )
         for row in rows
     ]
+
+
+async def get_provider_utilization(db: AsyncSession) -> list[ProviderUtilizationItem]:
+    appointment_counts = (
+        select(AppointmentService.provider_id, func.count(AppointmentService.id).label("appointment_count"))
+        .group_by(AppointmentService.provider_id)
+        .subquery()
+    )
+    revenue = (
+        select(Payment.provider_id, func.sum(Payment.amount).label("revenue_cents"))
+        .where(Payment.status == "paid")
+        .group_by(Payment.provider_id)
+        .subquery()
+    )
+    query = (
+        select(
+            Provider.id.label("provider_id"),
+            (Provider.first_name + " " + Provider.last_name).label("provider_name"),
+            func.coalesce(appointment_counts.c.appointment_count, 0).label("appointment_count"),
+            func.coalesce(revenue.c.revenue_cents, 0).label("revenue_cents"),
+        )
+        .outerjoin(appointment_counts, appointment_counts.c.provider_id == Provider.id)
+        .outerjoin(revenue, revenue.c.provider_id == Provider.id)
+        .order_by(func.coalesce(appointment_counts.c.appointment_count, 0).desc())
+    )
+    rows = (await db.execute(query)).all()
+    return [
+        ProviderUtilizationItem(
+            provider_id=row.provider_id, provider_name=row.provider_name,
+            appointment_count=row.appointment_count, revenue_cents=int(row.revenue_cents),
+        )
+        for row in rows
+    ]
+
+
+async def get_appointment_status_breakdown(db: AsyncSession) -> list[AppointmentStatusItem]:
+    query = select(Appointment.status, func.count(Appointment.id).label("count")).group_by(Appointment.status)
+    rows = (await db.execute(query)).all()
+    return [AppointmentStatusItem(status=row.status, count=row.count) for row in rows]
