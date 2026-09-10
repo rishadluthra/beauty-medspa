@@ -35,7 +35,7 @@ export function DemographicsChart() {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
+      <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
         <h2 className="mb-4 font-medium text-brand-dark">Patients by Gender</h2>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={genderData}>
@@ -47,7 +47,7 @@ export function DemographicsChart() {
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
+      <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
         <h2 className="mb-4 font-medium text-brand-dark">Patients by Age Group</h2>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={data.age_buckets}>

@@ -23,23 +23,32 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen bg-brand-dark text-brand-bg">
         <Providers>
-          <nav className="flex items-center justify-between border-b border-brand-bg/10 bg-brand-dark/90 px-6 py-4 shadow-lg backdrop-blur-sm">
-            <span className="text-lg font-semibold tracking-tight">Beauty Med Spa</span>
-            <div className="flex gap-2">
-              <Link
-                href="/patients"
-                className="rounded-full px-4 py-1.5 text-sm font-medium transition-colors hover:bg-brand-bg/10 hover:text-brand-gold"
-              >
-                Patients
-              </Link>
-              <Link
-                href="/analytics"
-                className="rounded-full px-4 py-1.5 text-sm font-medium transition-colors hover:bg-brand-bg/10 hover:text-brand-gold"
-              >
-                Analytics
-              </Link>
-            </div>
-          </nav>
+          {/*
+            Persistent, floating "pill" nav matching decodahealth.com's own
+            nav treatment: inset from the page edges (not full-bleed),
+            fully rounded, translucent cream with a backdrop blur (frosted
+            glass), and `sticky` so it stays visible while scrolling long
+            pages instead of scrolling away with the content.
+          */}
+          <div className="sticky top-3 z-50 px-3 lg:top-4 lg:px-8">
+            <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-brand-gold/10 bg-brand-bg/80 px-6 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl">
+              <span className="text-lg font-bold tracking-tight">Beauty Med Spa</span>
+              <div className="flex gap-8">
+                <Link
+                  href="/patients"
+                  className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
+                >
+                  Patients
+                </Link>
+                <Link
+                  href="/analytics"
+                  className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
+                >
+                  Analytics
+                </Link>
+              </div>
+            </nav>
+          </div>
           <main className="p-6">{children}</main>
         </Providers>
       </body>

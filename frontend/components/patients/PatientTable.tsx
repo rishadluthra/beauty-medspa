@@ -52,7 +52,7 @@ export function PatientTable() {
 
       {data && (
         <>
-          <div className="overflow-x-auto rounded-2xl border border-brand-gold/10 bg-brand-bg shadow-lg shadow-brand-gold/10">
+          <div className="overflow-x-auto rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10">
             <table className="w-full text-sm">
               <thead className="bg-brand-gold/10 text-left text-brand-dark">
                 <tr>
@@ -67,7 +67,7 @@ export function PatientTable() {
                   <th className="p-3 font-semibold">Total Spent</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="text-brand-dark">
                 {/*
                   Empty-state row. colSpan={9} must match the number of
                   <th> columns in the header above (Name, Gender, Phone,

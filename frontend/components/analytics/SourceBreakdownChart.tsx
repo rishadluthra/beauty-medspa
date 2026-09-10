@@ -32,7 +32,7 @@ export function SourceBreakdownChart() {
   const chartData = data.map((entry) => ({ ...entry, source: formatLabel(entry.source) }));
 
   return (
-    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
+    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 font-medium text-brand-dark">How Patients Find Us</h2>
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>

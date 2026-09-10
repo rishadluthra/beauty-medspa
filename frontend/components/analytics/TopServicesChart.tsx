@@ -36,7 +36,7 @@ export function TopServicesChart() {
   if (!data || data.length === 0) return <p className="text-brand-bg/70">No service data yet.</p>;
 
   return (
-    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
+    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 font-medium text-brand-dark">Top Services by Bookings</h2>
       <ResponsiveContainer width="100%" height={320}>
         <BarChart data={data} layout="vertical" margin={{ left: 80 }}>

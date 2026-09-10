@@ -28,7 +28,7 @@ export function RevenueChart() {
   const chartData = data.map((point) => ({ period: point.period, revenue: point.revenue_cents / 100 }));
 
   return (
-    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
+    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 font-medium text-brand-dark">Revenue Over Time</h2>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData}>

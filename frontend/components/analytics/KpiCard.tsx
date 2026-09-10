@@ -12,7 +12,7 @@ interface Props {
 /** Renders a single stat card: a small label above a large value. */
 export function KpiCard({ label, value }: Props) {
   return (
-    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
+    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <p className="text-sm text-brand-sage">{label}</p>
       <p className="mt-1 text-2xl font-semibold tracking-tight text-brand-dark">{value}</p>
     </div>
