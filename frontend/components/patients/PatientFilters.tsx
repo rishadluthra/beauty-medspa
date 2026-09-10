@@ -3,21 +3,26 @@
 /**
  * Filter/search/sort toolbar for the Patient Table page, collapsed behind a
  * single persistent, center-aligned "Filters" pill rather than an
- * always-visible row of controls. Clicking it swaps the pill for a row of
- * standalone cream "chips" (search, source, gender, age, joined-date, sort)
- * popping outward from the same center point — there is no shared card
- * behind them, each chip carries its own frosted-glass surface, matching
- * the top nav's pill treatment. An "X" chip at the end of that row
- * collapses it back down to the single "Filters" pill.
+ * always-visible row of controls.
  *
- * The whole toolbar also tracks scroll position so it visually rises up
- * and merges toward the nav bar's own resting height as the page scrolls —
- * a smooth, continuous interpolation (not a hard breakpoint swap) meant to
- * echo how iOS's Dynamic Island fluidly combines separate pills into one.
+ * The pill itself is the shape that animates: clicking it springs its own
+ * width/height open (an elastic easing curve, not a linear fade) into the
+ * shape that holds the filter chips — like the pill stretching into the
+ * panel — and the chip content only fades in once that shape has mostly
+ * finished growing. Closing reverses the sequence: the chips fade out
+ * first, then the shape springs back down into the single small pill, so
+ * the row visibly "combines into one" rather than just disappearing.
+ * Once fully open, the shape's own background fades away, leaving only
+ * the individually-styled cream chips — no shared box behind them at rest.
  *
- * Holds only its own open/closed + scroll UI state — the actual filter
- * *values* are owned by `PatientTable` and passed in as `filters`, with
- * every change reported upward via `onChange`.
+ * `sticky`, pinned at a fixed offset comfortably below the nav's own
+ * sticky position, so the two stay visually paired while scrolling without
+ * ever overlapping it (the nav sits at a higher z-index and a lower sticky
+ * offset — this toolbar's offset must clear the nav's rendered height).
+ *
+ * Holds only its own open/closed UI state — the actual filter *values* are
+ * owned by `PatientTable` and passed in as `filters`, with every change
+ * reported upward via `onChange`.
  */
 
 import { useEffect, useState } from "react";
@@ -37,12 +42,11 @@ const SORTS = [
   { value: "last_appointment_date", label: "Last Appointment" },
 ];
 
-// Sticky offset (px) when the page is at the very top, vs. once scrolled —
-// the merged value matches the nav's own `top-3` resting position so the
-// two pills read as one cluster once combined.
-const TOP_OFFSET_REST = 80;
-const TOP_OFFSET_MERGED = 12;
-const MERGE_SCROLL_DISTANCE = 80;
+// How long, after the shape starts growing/shrinking, before the chip
+// content fades in/out. Keeping this shorter than the shape's own
+// transition duration (500ms) is what makes the chips look like they
+// "emerge from" the shape rather than popping in independently of it.
+const CONTENT_DELAY_MS = 180;
 
 interface Props {
   /** Current filter/sort/page state, owned by the parent (`PatientTable`). */
@@ -87,29 +91,62 @@ const nestedInputClassName = "bg-transparent text-brand-dark outline-none placeh
 
 export function PatientFilters({ filters, onChange }: Props) {
   const [isOpen, setIsOpen] = useState(false);
-  const [topOffset, setTopOffset] = useState(TOP_OFFSET_REST);
+  const [showContent, setShowContent] = useState(false);
   const activeCount = countActiveFilters(filters);
 
-  useEffect(() => {
-    function handleScroll() {
-      const progress = Math.min(Math.max(window.scrollY / MERGE_SCROLL_DISTANCE, 0), 1);
-      setTopOffset(TOP_OFFSET_REST - progress * (TOP_OFFSET_REST - TOP_OFFSET_MERGED));
-    }
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+  // Opening: grow the shape first, then reveal the chips once it's mostly
+  // there. Closing: hide the chips first, then let the shape spring shut —
+  // this ordering is what makes the transition read as "grows out of" /
+  // "collapses into" the pill instead of an independent fade.
+  function handleOpen() {
+    setIsOpen(true);
+    window.setTimeout(() => setShowContent(true), CONTENT_DELAY_MS);
+  }
+  function handleClose() {
+    setShowContent(false);
+    window.setTimeout(() => setIsOpen(false), CONTENT_DELAY_MS);
+  }
+
+  // Safety net: if the component unmounts mid-transition, don't leak the timers.
+  useEffect(() => () => {
+    setShowContent(false);
   }, []);
 
   return (
-    <div className="sticky z-40 transition-[top] duration-150 ease-out" style={{ top: `${topOffset}px` }}>
-      {/* Collapsed state: a single pill, centered under the nav, matching its own frosted style. */}
-      {!isOpen && (
-        <div className="flex justify-center">
+    // Fixed sticky offset — comfortably clears the nav's own sticky pill
+    // (top-3 / lg:top-4, roughly 56-60px tall) with a clean visible gap
+    // rather than reacting to scroll position, which previously let the
+    // two collide.
+    <div className="sticky top-20 z-40 flex justify-center px-3 lg:top-24">
+      <div className="relative flex justify-center">
+        {/*
+          This single element IS the animated shape: an elastic ease-out on
+          width/height/background lets it read as one pill physically
+          stretching into a wider capsule (liquid), rather than two
+          different elements crossfading. `rounded-full` on any height
+          still renders a fully-rounded stadium/pill shape, so no separate
+          border-radius transition is needed as it grows. Height/width are
+          both explicit fixed values (not "auto") specifically so the
+          browser can natively transition between them — the fade of its
+          own background is delayed so it stays looking solid while it's
+          still visibly stretching, then disappears once the real chips
+          have taken over.
+        */}
+        <div
+          className={`overflow-hidden rounded-full transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+            isOpen
+              ? `h-16 w-[min(92vw,56rem)] delay-300 ${showContent ? "border-transparent bg-brand-bg/0 shadow-none" : "border border-brand-gold/10 bg-brand-bg/90 shadow-lg shadow-brand-gold/10 backdrop-blur-xl"}`
+              : "h-11 w-40 border border-brand-gold/10 bg-brand-bg/80 shadow-lg shadow-brand-gold/10 backdrop-blur-xl"
+          }`}
+        >
+          {/* Collapsed label — its own opacity fade keeps it from lingering visibly while the shape is mid-stretch. */}
           <button
             type="button"
-            onClick={() => setIsOpen(true)}
-            aria-expanded={false}
-            className="flex items-center gap-2 rounded-full border border-brand-gold/10 bg-brand-bg/80 px-5 py-2.5 text-sm font-medium text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl transition-all duration-300 hover:bg-brand-bg/90"
+            onClick={handleOpen}
+            aria-expanded={isOpen}
+            className={`flex h-11 w-40 items-center justify-center gap-2 whitespace-nowrap px-5 text-sm font-medium text-brand-dark transition-opacity duration-150 ${
+              isOpen ? "pointer-events-none opacity-0" : "opacity-100"
+            }`}
           >
             <FilterIcon />
             Filters
@@ -120,26 +157,18 @@ export function PatientFilters({ filters, onChange }: Props) {
             )}
           </button>
         </div>
-      )}
 
       {/*
-        Expanded state: no shared card behind these — each control is its
-        own cream chip. The two nested divs below are transparent, borderless
-        layout helpers only (never rendered as a visible box): the outer one
-        uses the CSS grid-rows-[0fr → 1fr] trick to animate height from
-        nothing up to the row's natural height, and the inner one scales up
-        from 95%, so the whole row "pops outward" from the same center point
-        the collapsed pill occupied, rather than a hard cut or a corner-grow.
+        The actual filter chips render as a separate layer positioned over
+        the same centered spot — once `showContent` is true they fade/scale
+        in "out of" the shape above; on close they fade out first, before
+        the shape springs shut. No shared background here: each control
+        below is its own standalone cream chip.
       */}
-      <div
-        className={`grid transition-all duration-300 ease-out ${
-          isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-        }`}
-      >
-        <div className="overflow-hidden">
+      {isOpen && (
         <div
-          className={`flex flex-wrap items-center justify-center gap-3 pt-1 transition-transform duration-300 ${
-            isOpen ? "scale-100" : "scale-95"
+          className={`absolute top-0 flex w-full max-w-4xl flex-wrap items-center justify-center gap-3 px-3 pt-1 transition-all duration-300 ease-out ${
+            showContent ? "translate-y-0 scale-100 opacity-100" : "-translate-y-1 scale-95 opacity-0"
           }`}
         >
           <input
@@ -233,7 +262,7 @@ export function PatientFilters({ filters, onChange }: Props) {
           {/* Collapses the row back into the single "Filters" pill. Kept last so it reads as the rightmost chip. */}
           <button
             type="button"
-            onClick={() => setIsOpen(false)}
+            onClick={handleClose}
             aria-label="Close filters"
             className="flex h-9 w-9 items-center justify-center rounded-full border border-brand-gold/10 bg-brand-bg/90 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl transition-colors hover:bg-brand-bg"
           >
@@ -243,7 +272,7 @@ export function PatientFilters({ filters, onChange }: Props) {
             </svg>
           </button>
         </div>
-        </div>
+      )}
       </div>
     </div>
   );
