@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Appointment, AppointmentService, Patient, Payment, Provider, Service
-from app.schemas.analytics import AppointmentStatusItem, OverviewStats, ProviderUtilizationItem, RevenuePoint, SourceBreakdownItem, TopServiceItem
+from app.schemas.analytics import AgeBucketCount, AppointmentStatusItem, DemographicsResponse, GenderCount, OverviewStats, ProviderUtilizationItem, RevenuePoint, SourceBreakdownItem, TopServiceItem
 
 
 async def get_overview_stats(db: AsyncSession) -> OverviewStats:
@@ -130,3 +130,26 @@ async def get_appointment_status_breakdown(db: AsyncSession) -> list[Appointment
     query = select(Appointment.status, func.count(Appointment.id).label("count")).group_by(Appointment.status)
     rows = (await db.execute(query)).all()
     return [AppointmentStatusItem(status=row.status, count=row.count) for row in rows]
+
+
+async def get_patient_demographics(db: AsyncSession) -> DemographicsResponse:
+    gender_rows = (await db.execute(
+        select(Patient.gender, func.count(Patient.id).label("count")).group_by(Patient.gender)
+    )).all()
+    gender_breakdown = [GenderCount(gender=row.gender, count=row.count) for row in gender_rows]
+
+    age_years = extract("year", func.age(func.now(), Patient.date_of_birth))
+    bucket = case(
+        (age_years < 25, "18-24"),
+        (age_years < 35, "25-34"),
+        (age_years < 45, "35-44"),
+        (age_years < 55, "45-54"),
+        (age_years < 65, "55-64"),
+        else_="65+",
+    ).label("bucket")
+    bucket_rows = (await db.execute(
+        select(bucket, func.count(Patient.id).label("count")).group_by(bucket)
+    )).all()
+    age_buckets = [AgeBucketCount(bucket=row.bucket, count=row.count) for row in bucket_rows]
+
+    return DemographicsResponse(gender_breakdown=gender_breakdown, age_buckets=age_buckets)
