@@ -20,8 +20,8 @@ export function SourceBreakdownChart() {
     queryFn: api.getPatientsBySource,
   });
 
-  if (isLoading) return <p className="text-brand-sage">Loading source breakdown…</p>;
-  if (!data || data.length === 0) return <p className="text-brand-sage">No patient source data yet.</p>;
+  if (isLoading) return <p className="text-brand-bg/70">Loading source breakdown…</p>;
+  if (!data || data.length === 0) return <p className="text-brand-bg/70">No patient source data yet.</p>;
 
   // Map the raw fetched data into a separate `chartData` array with
   // formatLabel() applied to `source` (e.g. "in_person" -> "In Person").
@@ -32,7 +32,7 @@ export function SourceBreakdownChart() {
   const chartData = data.map((entry) => ({ ...entry, source: formatLabel(entry.source) }));
 
   return (
-    <div className="rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
+    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 font-medium text-brand-dark">How Patients Find Us</h2>
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>

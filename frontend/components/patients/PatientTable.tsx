@@ -47,12 +47,12 @@ export function PatientTable() {
       */}
       <PatientFilters filters={filters} onChange={(next) => setFilters({ ...filters, ...next, page: 1 })} />
 
-      {isLoading && <p className="text-brand-sage">Loading patients…</p>}
-      {isError && <p className="text-rust">Could not load patients. Please try again.</p>}
+      {isLoading && <p className="text-brand-bg/70">Loading patients…</p>}
+      {isError && <p className="text-coral">Could not load patients. Please try again.</p>}
 
       {data && (
         <>
-          <div className="overflow-x-auto rounded-2xl border border-brand-dark/10 bg-white shadow-md">
+          <div className="overflow-x-auto rounded-2xl border border-brand-gold/10 bg-brand-bg shadow-lg shadow-brand-gold/10">
             <table className="w-full text-sm">
               <thead className="bg-brand-gold/10 text-left text-brand-dark">
                 <tr>
@@ -107,19 +107,19 @@ export function PatientTable() {
           </div>
 
           <div className="flex items-center justify-between text-sm">
-            <span className="text-brand-sage">
+            <span className="text-brand-bg/70">
               Showing {(data.page - 1) * data.page_size + 1}–{Math.min(data.page * data.page_size, data.total)} of {data.total}
             </span>
             <div className="flex gap-2">
               <button
-                className="rounded-full border border-brand-dark/15 px-4 py-1.5 transition-colors hover:border-brand-gold/40 hover:bg-brand-gold/10 disabled:opacity-40 disabled:hover:border-brand-dark/15 disabled:hover:bg-transparent"
+                className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
                 disabled={data.page <= 1}
                 onClick={() => setFilters({ ...filters, page: data.page - 1 })}
               >
                 Previous
               </button>
               <button
-                className="rounded-full border border-brand-dark/15 px-4 py-1.5 transition-colors hover:border-brand-gold/40 hover:bg-brand-gold/10 disabled:opacity-40 disabled:hover:border-brand-dark/15 disabled:hover:bg-transparent"
+                className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
                 disabled={data.page * data.page_size >= data.total}
                 onClick={() => setFilters({ ...filters, page: data.page + 1 })}
               >

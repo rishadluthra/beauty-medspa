@@ -21,7 +21,7 @@ export function DemographicsChart() {
     queryFn: api.getDemographics,
   });
 
-  if (isLoading) return <p className="text-brand-sage">Loading demographics…</p>;
+  if (isLoading) return <p className="text-brand-bg/70">Loading demographics…</p>;
   if (!data) return null;
 
   // Map the raw fetched gender_breakdown into a separate `genderData` array
@@ -35,7 +35,7 @@ export function DemographicsChart() {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <div className="rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
+      <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
         <h2 className="mb-4 font-medium text-brand-dark">Patients by Gender</h2>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={genderData}>
@@ -47,7 +47,7 @@ export function DemographicsChart() {
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
+      <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
         <h2 className="mb-4 font-medium text-brand-dark">Patients by Age Group</h2>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={data.age_buckets}>

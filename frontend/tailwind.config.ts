@@ -22,8 +22,13 @@ const config: Config = {
           "navy-teal": "#144761",
           // "Needs attention" tone (errors, cancelled/failed states) — kept
           // muted rather than a harsh bright red to stay within the
-          // palette; matches the `rust` entry in lib/chartColors.ts.
+          // palette; matches the `rust` entry in lib/chartColors.ts. Used
+          // for error text INSIDE cream cards/charts.
           rust: "#9a3412",
+          // A brighter, lighter warm-red for error text that sits directly
+          // on the dark page background (outside any card) — `rust` is
+          // too dark to read against the near-black background.
+          coral: "#e2725b",
         },
       },
     },

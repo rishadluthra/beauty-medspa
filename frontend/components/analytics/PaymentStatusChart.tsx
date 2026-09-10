@@ -21,8 +21,8 @@ export function PaymentStatusChart() {
     queryFn: api.getPaymentStatus,
   });
 
-  if (isLoading) return <p className="text-brand-sage">Loading payment status…</p>;
-  if (!data || data.length === 0) return <p className="text-brand-sage">No payment data yet.</p>;
+  if (isLoading) return <p className="text-brand-bg/70">Loading payment status…</p>;
+  if (!data || data.length === 0) return <p className="text-brand-bg/70">No payment data yet.</p>;
 
   // `chartData` is a SEPARATE array from `data`, with formatLabel() applied
   // to `status` for display (e.g. "paid" -> "Paid"). It's what gets passed
@@ -30,7 +30,7 @@ export function PaymentStatusChart() {
   const chartData = data.map((entry) => ({ ...entry, status: formatLabel(entry.status) }));
 
   return (
-    <div className="rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
+    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 font-medium text-brand-dark">Payment Status</h2>
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>

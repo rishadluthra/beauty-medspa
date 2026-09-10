@@ -3,14 +3,15 @@
 @tailwind utilities;
 
 /*
- * Palette matched to decodahealth.com's own design system (warm cream
- * background, near-black text) rather than a plain white/gray dashboard —
- * see ATTENTION_TO_DETAIL.md for how these values were extracted from
- * their site's compiled CSS.
+ * Palette matched to decodahealth.com's own design system: their `<main>`
+ * and every section use a deep, near-black green as the PAGE background,
+ * with cream reserved for card/component surfaces floating on top of it —
+ * not the other way around. See ATTENTION_TO_DETAIL.md for how this was
+ * extracted (and corrected) from their site's actual compiled CSS.
  */
 :root {
-  --background: #faf6f0;
-  --foreground: #1b211b;
+  --background: #1b211b;
+  --foreground: #faf6f0;
 }
 
 body {

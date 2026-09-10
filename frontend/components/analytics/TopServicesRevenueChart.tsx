@@ -31,8 +31,8 @@ export function TopServicesRevenueChart() {
     queryFn: api.getTopServices,
   });
 
-  if (isLoading) return <p className="text-brand-sage">Loading top services…</p>;
-  if (!data || data.length === 0) return <p className="text-brand-sage">No service data yet.</p>;
+  if (isLoading) return <p className="text-brand-bg/70">Loading top services…</p>;
+  if (!data || data.length === 0) return <p className="text-brand-bg/70">No service data yet.</p>;
 
   // The shared endpoint returns data pre-sorted by booking_count, so
   // re-sort by revenue_cents (highest first) for this view, and convert
@@ -42,7 +42,7 @@ export function TopServicesRevenueChart() {
     .map((item) => ({ service_name: item.service_name, revenue: item.revenue_cents / 100 }));
 
   return (
-    <div className="rounded-2xl border border-brand-dark/10 bg-white p-5 shadow-md">
+    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 font-medium text-brand-dark">Top Services by Revenue</h2>
       <ResponsiveContainer width="100%" height={320}>
         <BarChart data={chartData} layout="vertical" margin={{ left: 80 }}>
