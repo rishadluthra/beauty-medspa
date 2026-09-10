@@ -1,0 +1,37 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+
+import { KpiCard } from "@/components/analytics/KpiCard";
+import { api } from "@/lib/api";
+
+function formatCents(cents: number): string {
+  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+export default function AnalyticsPage() {
+  const { data: overview, isLoading, isError } = useQuery({
+    queryKey: ["analytics", "overview"],
+    queryFn: api.getOverview,
+  });
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold">Analytics</h1>
+
+      {isLoading && <p className="text-slate-500">Loading overview…</p>}
+      {isError && <p className="text-red-600">Could not load analytics overview.</p>}
+
+      {overview && (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+          <KpiCard label="Total Patients" value={overview.total_patients.toLocaleString()} />
+          <KpiCard label="Total Revenue" value={formatCents(overview.total_revenue_cents)} />
+          <KpiCard label="Total Appointments" value={overview.total_appointments.toLocaleString()} />
+          <KpiCard label="Avg. Transaction" value={formatCents(overview.avg_transaction_cents)} />
+          <KpiCard label="New Patients (30d)" value={overview.new_patients_last_30_days.toLocaleString()} />
+          <KpiCard label="Cancellation Rate" value={`${(overview.cancellation_rate * 100).toFixed(1)}%`} />
+        </div>
+      )}
+    </div>
+  );
+}
