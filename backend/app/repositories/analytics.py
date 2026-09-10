@@ -4,7 +4,7 @@ from sqlalchemy import case, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Appointment, AppointmentService, Patient, Payment, Provider, Service
-from app.schemas.analytics import AgeBucketCount, AppointmentStatusItem, DemographicsResponse, GenderCount, OverviewStats, ProviderUtilizationItem, RevenuePoint, SourceBreakdownItem, TopServiceItem
+from app.schemas.analytics import AgeBucketCount, AppointmentStatusItem, DemographicsResponse, GenderCount, OverviewStats, PaymentStatusItem, ProviderUtilizationItem, RevenuePoint, SourceBreakdownItem, TopServiceItem
 
 
 async def get_overview_stats(db: AsyncSession) -> OverviewStats:
@@ -130,6 +130,12 @@ async def get_appointment_status_breakdown(db: AsyncSession) -> list[Appointment
     query = select(Appointment.status, func.count(Appointment.id).label("count")).group_by(Appointment.status)
     rows = (await db.execute(query)).all()
     return [AppointmentStatusItem(status=row.status, count=row.count) for row in rows]
+
+
+async def get_payment_status_breakdown(db: AsyncSession) -> list[PaymentStatusItem]:
+    query = select(Payment.status, func.count(Payment.id).label("count")).group_by(Payment.status)
+    rows = (await db.execute(query)).all()
+    return [PaymentStatusItem(status=row.status, count=row.count) for row in rows]
 
 
 async def get_patient_demographics(db: AsyncSession) -> DemographicsResponse:

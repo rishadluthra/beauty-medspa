@@ -58,6 +58,11 @@ export interface AppointmentStatusItem {
   count: number;
 }
 
+export interface PaymentStatusItem {
+  status: string;
+  count: number;
+}
+
 export interface GenderCount {
   gender: string;
   count: number;

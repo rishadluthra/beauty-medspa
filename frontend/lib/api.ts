@@ -3,6 +3,7 @@ import type {
   DemographicsResponse,
   OverviewStats,
   PatientListResponse,
+  PaymentStatusItem,
   ProviderUtilizationItem,
   RevenuePoint,
   SourceBreakdownItem,
@@ -42,5 +43,6 @@ export const api = {
   getTopServices: () => apiGet<TopServiceItem[]>("/api/analytics/top-services"),
   getProviderUtilization: () => apiGet<ProviderUtilizationItem[]>("/api/analytics/provider-utilization"),
   getAppointmentStatus: () => apiGet<AppointmentStatusItem[]>("/api/analytics/appointment-status"),
+  getPaymentStatus: () => apiGet<PaymentStatusItem[]>("/api/analytics/payment-status"),
   getDemographics: () => apiGet<DemographicsResponse>("/api/analytics/demographics"),
 };

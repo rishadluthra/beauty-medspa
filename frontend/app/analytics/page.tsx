@@ -5,10 +5,12 @@ import { useQuery } from "@tanstack/react-query";
 import { AppointmentStatusChart } from "@/components/analytics/AppointmentStatusChart";
 import { DemographicsChart } from "@/components/analytics/DemographicsChart";
 import { KpiCard } from "@/components/analytics/KpiCard";
+import { PaymentStatusChart } from "@/components/analytics/PaymentStatusChart";
 import { ProviderUtilizationChart } from "@/components/analytics/ProviderUtilizationChart";
 import { RevenueChart } from "@/components/analytics/RevenueChart";
 import { SourceBreakdownChart } from "@/components/analytics/SourceBreakdownChart";
 import { TopServicesChart } from "@/components/analytics/TopServicesChart";
+import { TopServicesRevenueChart } from "@/components/analytics/TopServicesRevenueChart";
 import { api } from "@/lib/api";
 
 function formatCents(cents: number): string {
@@ -50,7 +52,12 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
+        <TopServicesRevenueChart />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
         <AppointmentStatusChart />
+        <PaymentStatusChart />
       </div>
 
       <DemographicsChart />

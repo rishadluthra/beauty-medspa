@@ -39,6 +39,11 @@ class AppointmentStatusItem(BaseModel):
     count: int
 
 
+class PaymentStatusItem(BaseModel):
+    status: str
+    count: int
+
+
 class GenderCount(BaseModel):
     gender: str
     count: int
