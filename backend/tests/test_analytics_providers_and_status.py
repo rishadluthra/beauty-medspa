@@ -46,7 +46,14 @@ async def test_provider_utilization_does_not_double_count_revenue(db_session):
 
 
 async def test_appointment_status_breakdown_counts_each_status(db_session):
-    """Appointments are grouped and counted by status (confirmed/cancelled/pending)."""
+    """Appointments are grouped and counted by status (confirmed/cancelled/pending), most common first.
+
+    Also asserts row *order*, not just the counts: cancelled (2) must
+    come before confirmed (1), proving the explicit `ORDER BY count DESC`
+    is actually applied rather than relying on `GROUP BY`'s undefined
+    ordering (which could pass a dict-only assertion by coincidence while
+    still returning rows in a random order on the chart).
+    """
     db_session.add_all([
         make_patient(id="pat_1"),
         make_appointment(id="apt_1", patient_id="pat_1", status="confirmed"),
@@ -58,3 +65,4 @@ async def test_appointment_status_breakdown_counts_each_status(db_session):
     rows = await get_appointment_status_breakdown(db_session)
 
     assert {r.status: r.count for r in rows} == {"confirmed": 1, "cancelled": 2}
+    assert [r.status for r in rows] == ["cancelled", "confirmed"]

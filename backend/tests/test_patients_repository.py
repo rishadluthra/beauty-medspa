@@ -5,7 +5,7 @@ HTTP layer -- see test_patients_router.py for that), covering the
 aggregation logic (spend totals, appointment counts) and filtering.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 from app.repositories.patients import PatientFilters, list_patients
 from tests.factories import make_appointment, make_patient, make_payment, make_provider, make_service
@@ -72,3 +72,31 @@ async def test_list_patients_filters_by_created_date_range(db_session):
 
     assert result.total == 1
     assert result.items[0].id == "pat_2"
+
+
+async def test_list_patients_filters_by_age_range_inclusive_at_both_boundaries(db_session):
+    """age_min/age_max bound age-as-of-today (derived from date_of_birth), inclusive on both ends.
+
+    Four patients who turn exactly 19, 20, 30, and 31 today (i.e. born
+    exactly that many years ago). Filtering age_min=20, age_max=30 must
+    include the patients turning exactly 20 and exactly 30 today (proving
+    both boundaries are inclusive, not just the range's interior) while
+    excluding the ones turning 19 (too young) and 31 (too old).
+    """
+    today = date.today()
+
+    def dob_n_years_ago(years: int) -> datetime:
+        d = today.replace(year=today.year - years)
+        return datetime(d.year, d.month, d.day)
+
+    db_session.add_all([
+        make_patient(id="pat_19", date_of_birth=dob_n_years_ago(19)),
+        make_patient(id="pat_20", date_of_birth=dob_n_years_ago(20)),
+        make_patient(id="pat_30", date_of_birth=dob_n_years_ago(30)),
+        make_patient(id="pat_31", date_of_birth=dob_n_years_ago(31)),
+    ])
+    await db_session.commit()
+
+    result = await list_patients(db_session, PatientFilters(age_min=20, age_max=30))
+
+    assert {item.id for item in result.items} == {"pat_20", "pat_30"}

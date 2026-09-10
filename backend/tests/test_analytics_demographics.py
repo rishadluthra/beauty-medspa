@@ -31,3 +31,26 @@ async def test_demographics_buckets_by_gender_and_age(db_session):
     buckets = {b.bucket: b.count for b in result.age_buckets}
     assert buckets["25-34"] == 1
     assert buckets["55-64"] == 1
+
+
+async def test_demographics_age_buckets_are_chronologically_ordered(db_session):
+    """age_buckets comes back youngest-to-oldest regardless of insertion order.
+
+    `GROUP BY` alone gives no ordering guarantee, so this deliberately adds
+    patients to the DB in a scrambled age order (65+ first, then 18-24,
+    then 45-54) and asserts the *returned* bucket list is nonetheless
+    strictly chronological — proving the fix orders by age, not insertion
+    order or whatever order Postgres's query planner happens to produce.
+    """
+    now = datetime.utcnow()
+    db_session.add_all([
+        make_patient(id="pat_1", date_of_birth=now.replace(year=now.year - 70)),  # 65+
+        make_patient(id="pat_2", date_of_birth=now.replace(year=now.year - 20)),  # 18-24
+        make_patient(id="pat_3", date_of_birth=now.replace(year=now.year - 50)),  # 45-54
+    ])
+    await db_session.commit()
+
+    result = await get_patient_demographics(db_session)
+
+    bucket_labels = [b.bucket for b in result.age_buckets]
+    assert bucket_labels == ["18-24", "45-54", "65+"]

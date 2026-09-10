@@ -194,15 +194,33 @@ async def get_provider_utilization(db: AsyncSession) -> list[ProviderUtilization
 
 
 async def get_appointment_status_breakdown(db: AsyncSession) -> list[AppointmentStatusItem]:
-    """Return appointment counts grouped by status (pending/confirmed/cancelled)."""
-    query = select(Appointment.status, func.count(Appointment.id).label("count")).group_by(Appointment.status)
+    """Return appointment counts grouped by status (pending/confirmed/cancelled), most common first.
+
+    `GROUP BY` alone gives no ordering guarantee — Postgres is free to
+    return rows in whatever order its query plan finds convenient, which
+    can vary between runs. Explicit `ORDER BY count DESC` makes the chart
+    deterministic rather than shuffling on every page load.
+    """
+    query = (
+        select(Appointment.status, func.count(Appointment.id).label("count"))
+        .group_by(Appointment.status)
+        .order_by(func.count(Appointment.id).desc())
+    )
     rows = (await db.execute(query)).all()
     return [AppointmentStatusItem(status=row.status, count=row.count) for row in rows]
 
 
 async def get_payment_status_breakdown(db: AsyncSession) -> list[PaymentStatusItem]:
-    """Return payment counts grouped by status (pending/paid/failed)."""
-    query = select(Payment.status, func.count(Payment.id).label("count")).group_by(Payment.status)
+    """Return payment counts grouped by status (pending/paid/failed), most common first.
+
+    See `get_appointment_status_breakdown` for why the explicit `ORDER BY`
+    matters — `GROUP BY` alone doesn't guarantee a stable row order.
+    """
+    query = (
+        select(Payment.status, func.count(Payment.id).label("count"))
+        .group_by(Payment.status)
+        .order_by(func.count(Payment.id).desc())
+    )
     rows = (await db.execute(query)).all()
     return [PaymentStatusItem(status=row.status, count=row.count) for row in rows]
 
@@ -214,9 +232,18 @@ async def get_patient_demographics(db: AsyncSession) -> DemographicsResponse:
     and bucketed into fixed 10-year bands (18-24, 25-34, ..., 65+) using a
     SQL `CASE` expression, so bucketing happens server-side rather than by
     pulling every patient into Python.
+
+    `gender_breakdown` is ordered most-common-first, like every other
+    breakdown chart in this app. `age_buckets`, however, is a genuine scale
+    (younger to older), not an arbitrary category — ordering it by count
+    would scramble it, so it's explicitly ordered chronologically by each
+    bucket's starting age instead, via a second `CASE` that maps each
+    bucket label to its ordinal position.
     """
     gender_rows = (await db.execute(
-        select(Patient.gender, func.count(Patient.id).label("count")).group_by(Patient.gender)
+        select(Patient.gender, func.count(Patient.id).label("count"))
+        .group_by(Patient.gender)
+        .order_by(func.count(Patient.id).desc())
     )).all()
     gender_breakdown = [GenderCount(gender=row.gender, count=row.count) for row in gender_rows]
 
@@ -229,8 +256,22 @@ async def get_patient_demographics(db: AsyncSession) -> DemographicsResponse:
         (age_years < 65, "55-64"),
         else_="65+",
     ).label("bucket")
+    # `GROUP BY bucket` on its own has no notion that "25-34" comes after
+    # "18-24" — it's just grouping equal strings. This second CASE re-derives
+    # each row's ordinal position (0..5) from the same age thresholds above,
+    # purely so ORDER BY has something chronological to sort on.
+    bucket_order = case(
+        (age_years < 25, 0),
+        (age_years < 35, 1),
+        (age_years < 45, 2),
+        (age_years < 55, 3),
+        (age_years < 65, 4),
+        else_=5,
+    )
     bucket_rows = (await db.execute(
-        select(bucket, func.count(Patient.id).label("count")).group_by(bucket)
+        select(bucket, func.count(Patient.id).label("count"))
+        .group_by(bucket)
+        .order_by(func.min(bucket_order))
     )).all()
     age_buckets = [AgeBucketCount(bucket=row.bucket, count=row.count) for row in bucket_rows]
 

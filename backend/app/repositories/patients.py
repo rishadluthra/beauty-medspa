@@ -17,6 +17,15 @@ from app.models import Appointment, Patient, Payment
 from app.schemas.patient import PatientListItem, PatientListResponse
 
 
+def _years_before(from_date: date, years: int) -> date:
+    """Returns the date exactly `years` before `from_date`, handling the Feb 29 edge case."""
+    try:
+        return from_date.replace(year=from_date.year - years)
+    except ValueError:
+        # from_date is Feb 29 and (from_date.year - years) isn't a leap year.
+        return from_date.replace(year=from_date.year - years, day=28)
+
+
 @dataclass
 class PatientFilters:
     """Optional filters for `list_patients`.
@@ -24,8 +33,11 @@ class PatientFilters:
     `search` matches (case-insensitively) against patient name, email, or
     phone. `source` and `gender` are exact-match filters. `created_from`/
     `created_to` filter on `Patient.created_date` (inclusive on both ends —
-    `created_to` covers the entire day, not just midnight). All fields are
-    optional; omitted filters are simply not applied.
+    `created_to` covers the entire day, not just midnight). `age_min`/
+    `age_max` filter on age *as of today*, computed from `date_of_birth`
+    (see `list_patients` for how an age range converts to a date-of-birth
+    range). All fields are optional; omitted filters are simply not
+    applied.
     """
 
     search: str | None = None
@@ -33,6 +45,8 @@ class PatientFilters:
     gender: str | None = None
     created_from: date | None = None
     created_to: date | None = None
+    age_min: int | None = None
+    age_max: int | None = None
 
 
 async def list_patients(
@@ -113,6 +127,25 @@ async def list_patients(
         # Comparing against the *next* day with `<` makes the end date
         # inclusive of its whole 24 hours.
         query = query.where(Patient.created_date < filters.created_to + timedelta(days=1))
+    if filters.age_min is not None:
+        # "At least age_min years old today" means born on or before
+        # (today - age_min years) — e.g. to be >= 20 today, you must have
+        # been born on or before this same calendar date 20 years ago.
+        # `date_of_birth` is a full timestamp, not just a date, so "on or
+        # before that calendar date" (inclusive of the whole day,
+        # regardless of what time someone's DOB happens to carry) means
+        # strictly before the *next* day — same reasoning as created_to.
+        cutoff = _years_before(date.today(), filters.age_min)
+        query = query.where(Patient.date_of_birth < cutoff + timedelta(days=1))
+    if filters.age_max is not None:
+        # "At most age_max years old today" means NOT YET (age_max + 1)
+        # years old, i.e. born strictly after (today - (age_max + 1)
+        # years) — someone born on or before that calendar date would
+        # already be age_max + 1, one year too old. "Strictly after that
+        # calendar date" (again treating date_of_birth as a full
+        # timestamp) means on or after the day right after it.
+        cutoff = _years_before(date.today(), filters.age_max + 1)
+        query = query.where(Patient.date_of_birth >= cutoff + timedelta(days=1))
 
     # Count matching rows (post-filter) for pagination metadata, without pulling all rows.
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()

@@ -56,6 +56,10 @@ export interface PatientQueryParams {
   created_from?: string;
   /** ISO date string (YYYY-MM-DD), inclusive of the entire day. */
   created_to?: string;
+  /** Minimum age in years, inclusive, as of today. */
+  age_min?: number;
+  /** Maximum age in years, inclusive, as of today. */
+  age_max?: number;
   sort?: string;
   page?: number;
   page_size?: number;
