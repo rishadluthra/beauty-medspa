@@ -12,7 +12,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, type PatientQueryParams } from "@/lib/api";
-import { formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
+import { calculateAge, formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
 import { getSourceBadgeStyle } from "@/lib/sourceColors";
 import { PatientFilters } from "./PatientFilters";
 
@@ -57,6 +57,7 @@ export function PatientTable() {
               <thead className="bg-brand-gold/10 text-left text-brand-dark">
                 <tr>
                   <th className="p-3 font-semibold">Name</th>
+                  <th className="w-16 p-3 font-semibold">Age</th>
                   <th className="p-3 font-semibold">Gender</th>
                   <th className="p-3 font-semibold">Phone</th>
                   <th className="p-3 font-semibold">Email</th>
@@ -69,15 +70,15 @@ export function PatientTable() {
               </thead>
               <tbody className="text-brand-dark">
                 {/*
-                  Empty-state row. colSpan={9} must match the number of
-                  <th> columns in the header above (Name, Gender, Phone,
-                  Email, Source, Joined, Visits, Last Visit, Spent) — if a
-                  column is ever added/removed, update this number too or
-                  the empty-state cell will misalign.
+                  Empty-state row. colSpan={10} must match the number of
+                  <th> columns in the header above (Name, Age, Gender,
+                  Phone, Email, Source, Joined, Visits, Last Visit, Spent)
+                  — if a column is ever added/removed, update this number
+                  too or the empty-state cell will misalign.
                 */}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="p-6 text-center text-brand-sage">
+                    <td colSpan={10} className="p-6 text-center text-brand-sage">
                       No patients match these filters.
                     </td>
                   </tr>
@@ -85,6 +86,7 @@ export function PatientTable() {
                 {data.items.map((patient) => (
                   <tr key={patient.id} className="border-t border-brand-dark/10 hover:bg-brand-gold/5">
                     <td className="p-3">{patient.first_name} {patient.last_name}</td>
+                    <td className="p-3">{calculateAge(patient.date_of_birth)}</td>
                     <td className="p-3">{formatLabel(patient.gender)}</td>
                     <td className="p-3">{formatPhone(patient.phone)}</td>
                     <td className="p-3">{patient.email}</td>

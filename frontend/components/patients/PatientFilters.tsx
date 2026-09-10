@@ -80,6 +80,22 @@ export function PatientFilters({ filters, onChange }: Props) {
           <option key={g} value={g}>{formatLabel(g)}</option>
         ))}
       </select>
+      <span className="flex items-center text-sm text-brand-bg/70">Joined:</span>
+      <input
+        type="date"
+        aria-label="Joined from"
+        className={selectClassName}
+        value={filters.created_from ?? ""}
+        onChange={(e) => onChange({ created_from: e.target.value || undefined })}
+      />
+      <span className="flex items-center text-brand-bg/50">–</span>
+      <input
+        type="date"
+        aria-label="Joined to"
+        className={selectClassName}
+        value={filters.created_to ?? ""}
+        onChange={(e) => onChange({ created_to: e.target.value || undefined })}
+      />
       <select
         className={selectClassName}
         value={filters.sort ?? "name"}

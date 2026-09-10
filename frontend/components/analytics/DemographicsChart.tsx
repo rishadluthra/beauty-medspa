@@ -43,7 +43,7 @@ export function DemographicsChart() {
             <XAxis dataKey="gender" />
             <YAxis />
             <Tooltip />
-            <Bar dataKey="count" fill={BRAND.sage} />
+            <Bar dataKey="count" name="Patients" fill={BRAND.sage} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -55,7 +55,7 @@ export function DemographicsChart() {
             <XAxis dataKey="bucket" />
             <YAxis />
             <Tooltip />
-            <Bar dataKey="count" fill={BRAND.rose} />
+            <Bar dataKey="count" name="Patients" fill={BRAND.rose} />
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -31,7 +31,7 @@ export function ProviderUtilizationChart() {
           <XAxis type="number" />
           <YAxis type="category" dataKey="provider_name" width={140} />
           <Tooltip />
-          <Bar dataKey="appointment_count" fill={BRAND.sage} />
+          <Bar dataKey="appointment_count" name="Appointments" fill={BRAND.sage} />
         </BarChart>
       </ResponsiveContainer>
     </div>

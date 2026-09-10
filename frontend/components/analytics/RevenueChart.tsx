@@ -45,7 +45,7 @@ export function RevenueChart() {
           */}
           <YAxis tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
           <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
-          <Line type="monotone" dataKey="revenue" stroke={BRAND.navyTeal} strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="revenue" name="Revenue" stroke={BRAND.navyTeal} strokeWidth={2} dot={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>

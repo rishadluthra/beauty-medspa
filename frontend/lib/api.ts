@@ -52,6 +52,10 @@ export interface PatientQueryParams {
   search?: string;
   source?: string;
   gender?: string;
+  /** ISO date string (YYYY-MM-DD), inclusive. */
+  created_from?: string;
+  /** ISO date string (YYYY-MM-DD), inclusive of the entire day. */
+  created_to?: string;
   sort?: string;
   page?: number;
   page_size?: number;

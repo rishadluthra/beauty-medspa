@@ -8,6 +8,7 @@ service as "tools" over the data.
 """
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,13 +22,17 @@ class PatientFilters:
     """Optional filters for `list_patients`.
 
     `search` matches (case-insensitively) against patient name, email, or
-    phone. `source` and `gender` are exact-match filters. All fields are
+    phone. `source` and `gender` are exact-match filters. `created_from`/
+    `created_to` filter on `Patient.created_date` (inclusive on both ends —
+    `created_to` covers the entire day, not just midnight). All fields are
     optional; omitted filters are simply not applied.
     """
 
     search: str | None = None
     source: str | None = None
     gender: str | None = None
+    created_from: date | None = None
+    created_to: date | None = None
 
 
 async def list_patients(
@@ -99,6 +104,15 @@ async def list_patients(
         query = query.where(Patient.source == filters.source)
     if filters.gender:
         query = query.where(Patient.gender == filters.gender)
+    if filters.created_from:
+        query = query.where(Patient.created_date >= filters.created_from)
+    if filters.created_to:
+        # `created_date` is a datetime column; comparing directly against
+        # `created_to` (a date) would only include up to midnight of that
+        # day, silently excluding anything created later that same day.
+        # Comparing against the *next* day with `<` makes the end date
+        # inclusive of its whole 24 hours.
+        query = query.where(Patient.created_date < filters.created_to + timedelta(days=1))
 
     # Count matching rows (post-filter) for pagination metadata, without pulling all rows.
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()

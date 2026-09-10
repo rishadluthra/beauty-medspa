@@ -44,7 +44,7 @@ export function TopServicesChart() {
           <XAxis type="number" />
           <YAxis type="category" dataKey="service_name" width={140} />
           <Tooltip />
-          <Bar dataKey="booking_count" fill={BRAND.gold} />
+          <Bar dataKey="booking_count" name="Bookings" fill={BRAND.gold} />
         </BarChart>
       </ResponsiveContainer>
     </div>

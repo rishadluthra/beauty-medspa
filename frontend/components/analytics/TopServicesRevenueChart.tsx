@@ -58,7 +58,7 @@ export function TopServicesRevenueChart() {
           <XAxis type="number" tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
           <YAxis type="category" dataKey="service_name" width={140} />
           <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
-          <Bar dataKey="revenue" fill={BRAND.navyTeal} />
+          <Bar dataKey="revenue" name="Revenue" fill={BRAND.navyTeal} />
         </BarChart>
       </ResponsiveContainer>
     </div>
