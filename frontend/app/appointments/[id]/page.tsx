@@ -58,11 +58,18 @@ export default function AppointmentDetailPage() {
 
   // The back link returns to the Today's Appointments or Calendar tab this schedule
   // row was actually clicked from, labeled with that same tab's own name (`tabLabel`)
-  // -- same mechanism as the Patient Detail page's own back link, just mapping this
-  // page's own `ctx` values (there's no "all" here; only a schedule row reaches this
-  // page at all).
+  // -- same mechanism as the Patient Detail page's own back link, mapping this page's
+  // own `ctx` values (there's no "all" here; only a schedule row reaches this page at
+  // all). `back_tab`, when present, overrides that ctx-based inference directly --
+  // needed because "which tab to return to" and "which schedule window Previous/Next
+  // should rank against" aren't always the same thing: `ComingUpStrip`'s items are
+  // TOMORROW's appointments (no `ctx` at all, since there's no single bounded window
+  // for Previous/Next to walk there), but they're still shown on the Today's
+  // Appointments tab, so the back link needs to say "Today's Appointments" specifically
+  // rather than falling back to a generic "Front Desk" just because there's no `ctx`
+  // to infer a tab from.
   const contextKind = searchParams.get("ctx");
-  const backTab = contextKind ? TAB_FOR_CONTEXT[contextKind] : undefined;
+  const backTab = searchParams.get("back_tab") || (contextKind ? TAB_FOR_CONTEXT[contextKind] : undefined);
   const backHref = backTab ? `/patients?tab=${backTab}` : "/patients";
   const backLabel = (backTab && tabLabel(backTab)) || "Front Desk";
 

@@ -63,11 +63,17 @@ export function ComingUpStrip() {
           Appointment Detail page's Previous/Next can walk, so those
           buttons simply stay disabled when arriving from here, which is
           honest given there's no "next item in this list" concept to offer.
+          `back_tab=today` IS passed explicitly, though, so the back link
+          still says "Back to Today's Appointments" -- these are tomorrow's
+          appointments, but the strip itself lives on the Today's
+          Appointments tab, and without `ctx` there'd be nothing for the
+          back link to infer a tab from otherwise (it would silently fall
+          back to the generic "Front Desk" label instead).
         */}
         {data.items.map((item) => (
           <Link
             key={item.id}
-            href={`/appointments/${item.appointment_id}?service_id=${item.service_id}`}
+            href={`/appointments/${item.appointment_id}?service_id=${item.service_id}&back_tab=today`}
             className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-brand-bg/20 bg-brand-bg/5 px-3 py-2.5 text-center transition-colors hover:border-brand-gold hover:bg-brand-bg/10"
           >
             <span className="w-full truncate text-sm font-medium text-brand-bg">{item.first_name} {item.last_name}</span>
