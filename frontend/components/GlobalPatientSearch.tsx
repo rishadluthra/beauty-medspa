@@ -103,14 +103,23 @@ export function GlobalPatientSearch() {
 
   return (
     <>
+      {/*
+        Sized to fill the nav's middle column at `sm` and up (see
+        app/layout.tsx) so this reads as an actual search bar sitting in
+        the nav there -- `w-full` lets the parent column control the real
+        width instead of this button sizing to its own content. Below
+        `sm`, the nav instead renders this in a small fixed-width slot
+        alongside the nav links (no room for a real middle column on a
+        phone screen), so padding tightens to just fit the icon there.
+      */}
       <button
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label="Search patients"
-        className="flex items-center gap-1.5 rounded-full border border-brand-dark/10 px-3 py-1.5 text-sm text-brand-dark/60 transition-colors hover:border-brand-gold hover:text-brand-dark"
+        className="flex w-full items-center justify-center gap-2 rounded-full border border-brand-dark/10 bg-brand-dark/5 px-2 py-2 text-sm text-brand-dark/60 transition-colors hover:border-brand-gold hover:text-brand-dark sm:justify-start sm:px-4"
       >
         <SearchIcon />
-        <span className="hidden sm:inline">Search</span>
+        <span className="hidden truncate sm:inline">Search patients…</span>
       </button>
 
       {isOpen && createPortal(

@@ -33,10 +33,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             glass), and `sticky` so it stays visible while scrolling long
             pages instead of scrolling away with the content.
 
-            Sized `max-w-xl`/`2xl:max-w-2xl` -- a step up from the earlier
-            `max-w-lg`/`2xl:max-w-xl` now that the nav holds a real search
-            control (not just a wordmark and two links), so it needs a bit
-            more room without crowding.
+            Sized `max-w-3xl`/`2xl:max-w-5xl` -- roughly three-quarters of
+            the main content area's own `max-w-5xl`/`2xl:max-w-7xl` (see
+            `<main>` below), a deliberate step up from the earlier
+            `max-w-xl`/`2xl:max-w-2xl` now that it holds three distinct
+            sections (wordmark, search, nav links) rather than two crowded
+            close together.
+
+            Three explicit sections via `justify-between` -- wordmark+logo
+            (left, `shrink-0` so it never gets squeezed by the middle
+            column), search (middle, `flex-1` so it's the one section that
+            actually grows/shrinks with the nav's own width, per request
+            that it read as a real search bar rather than a small icon
+            button off to the side), Front Desk/Analytics (right,
+            `shrink-0`) -- instead of the previous two-group layout that
+            bunched search and the nav links together on the right.
 
             `bg-brand-bg/50` (not the earlier `/80`) is what actually makes
             this read as translucent frosted glass rather than a solid
@@ -46,38 +57,58 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             genuinely show through.
           */}
           <div className="sticky top-3 z-50 flex justify-center px-3 lg:top-4 lg:px-8">
-            <nav className="flex w-full max-w-xl items-center justify-between rounded-full border border-brand-gold/10 bg-brand-bg/50 px-6 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl 2xl:max-w-2xl">
-              <span className="flex items-center gap-2 text-lg font-bold tracking-tight">
+            <nav className="flex w-full max-w-3xl items-center justify-between gap-3 rounded-full border border-brand-gold/10 bg-brand-bg/50 px-4 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl sm:gap-4 sm:px-6 2xl:max-w-5xl">
+              {/*
+                The wordmark text itself hides below `sm` (leaving just the
+                logo mark) -- at phone width there isn't room for the full
+                name AND a search control AND both nav links without
+                something overflowing the pill; the mark alone still
+                identifies the brand, matching how the search label below
+                already collapses to icon-only at the same breakpoint.
+              */}
+              <span className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight">
                 <BrandMark />
-                Beauty Med Spa
+                <span className="hidden sm:inline">Beauty Med Spa</span>
               </span>
-              <div className="flex items-center gap-4">
+
+              {/*
+                The flexible middle column only exists at `sm` and up --
+                below that, `GlobalPatientSearch` moves into the right-hand
+                group instead (still reachable, just icon-only, matching
+                its own pre-existing mobile collapse), since there isn't
+                enough width for a real middle column on a phone screen.
+              */}
+              <div className="hidden flex-1 px-2 sm:flex sm:max-w-xs sm:px-4">
                 <GlobalPatientSearch />
-                <div className="flex gap-8">
-                  {/*
-                    Labeled "Front Desk", not "Patients" -- this section now
-                    covers today's schedule, the calendar, walk-in capacity,
-                    and rebooking outreach, not just a patient list, and
-                    "Front Desk" names who it's for (matching the
-                    front-desk-agent framing this whole dashboard is built
-                    around) rather than undersellling it as one narrow view.
-                    The route itself stays `/patients` -- that's about
-                    where patient detail pages live (`/patients/{id}`), not
-                    what this section is called in the nav.
-                  */}
-                  <Link
-                    href="/patients"
-                    className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
-                  >
-                    Front Desk
-                  </Link>
-                  <Link
-                    href="/analytics"
-                    className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
-                  >
-                    Analytics
-                  </Link>
+              </div>
+
+              {/*
+                Labeled "Front Desk", not "Patients" -- this section now
+                covers today's schedule, the calendar, walk-in capacity,
+                and rebooking outreach, not just a patient list, and
+                "Front Desk" names who it's for (matching the
+                front-desk-agent framing this whole dashboard is built
+                around) rather than undersellling it as one narrow view.
+                The route itself stays `/patients` -- that's about
+                where patient detail pages live (`/patients/{id}`), not
+                what this section is called in the nav.
+              */}
+              <div className="flex shrink-0 items-center gap-3 sm:gap-8">
+                <div className="w-9 sm:hidden">
+                  <GlobalPatientSearch />
                 </div>
+                <Link
+                  href="/patients"
+                  className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
+                >
+                  Front Desk
+                </Link>
+                <Link
+                  href="/analytics"
+                  className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
+                >
+                  Analytics
+                </Link>
               </div>
             </nav>
           </div>
