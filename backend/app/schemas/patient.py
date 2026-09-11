@@ -166,6 +166,14 @@ class UpcomingPatientItem(BaseModel):
     email: str
     upcoming_appointment_date: datetime
     appointment_status: str
+    # The specific Appointment/AppointmentService row that IS the soonest upcoming
+    # slot (not just an aggregated timestamp) -- what the "Coming Up" strip links to
+    # (the Appointment Detail page) and what it shows (the actual service/provider,
+    # not just a date), matching how Today's/Calendar's schedule rows already work.
+    appointment_id: str
+    service_id: int
+    service_name: str
+    provider_name: str
 
 
 class UpcomingAppointmentsResponse(BaseModel):

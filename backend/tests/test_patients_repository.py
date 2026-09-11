@@ -447,9 +447,50 @@ async def test_list_upcoming_appointments_selects_soonest_and_excludes_cancelled
 
     by_id = {item.id: item for item in result.items}
     assert by_id["pat_a"].upcoming_appointment_date == datetime(2026, 1, 15, 9, 0)
+    assert by_id["pat_a"].appointment_id == "apt_a_soon"
+    assert by_id["pat_a"].service_name == "Consultation"  # make_service()'s default name
+    assert by_id["pat_a"].provider_name == "Dr Smith"  # make_provider()'s default name
     assert "pat_b" not in by_id  # today, not upcoming
     assert "pat_c" not in by_id
     assert "pat_d" not in by_id
+
+
+async def test_list_upcoming_appointments_reports_the_soonest_rows_own_service_and_provider(db_session):
+    """When a patient's soonest upcoming appointment has multiple services (e.g. a
+    consultation followed by an X-ray, possibly with different providers), service_name/
+    provider_name must come from whichever row actually starts soonest -- not the other
+    service on the same appointment, and not an arbitrary one.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a"),
+        make_provider(id="prv_1", first_name="Ann", last_name="Early"),
+        make_provider(id="prv_2", first_name="Bob", last_name="Late"),
+        make_service(id="svc_1", name="Consultation"),
+        make_service(id="svc_2", name="X-Ray"),
+        make_appointment(id="apt_multi", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_a_later", patient_id="pat_a", status="confirmed"),  # sets the latest data month
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(
+            appointment_id="apt_multi", service_id="svc_1", provider_id="prv_1",
+            start=datetime(2026, 1, 15, 9, 0), end=datetime(2026, 1, 15, 9, 30),
+        ),
+        make_appointment_service(
+            appointment_id="apt_multi", service_id="svc_2", provider_id="prv_2",
+            start=datetime(2026, 1, 15, 10, 0), end=datetime(2026, 1, 15, 10, 30),
+        ),
+        make_appointment_service(appointment_id="apt_a_later", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    result = await list_upcoming_appointments(db_session)
+
+    item = next(i for i in result.items if i.id == "pat_a")
+    assert item.upcoming_appointment_date == datetime(2026, 1, 15, 9, 0)  # the EARLIER of the two services
+    assert item.appointment_id == "apt_multi"
+    assert item.service_name == "Consultation"  # not "X-Ray" (the later one)
+    assert item.provider_name == "Ann Early"  # not "Bob Late"
 
 
 async def test_list_todays_appointments_one_row_per_service_excludes_cancelled_and_other_days(db_session):

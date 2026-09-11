@@ -625,10 +625,20 @@ async def list_upcoming_appointments(
     show overlapping appointments.
 
     `provider_id`, if given, restricts the services considered to that
-    provider's own BEFORE aggregating "soonest" -- so a patient's soonest
+    provider's own BEFORE finding "soonest" -- so a patient's soonest
     upcoming appointment *with that provider* is shown, not their soonest
     appointment overall (which could be a different service with a
     different provider on the same multi-service appointment).
+
+    Ranks individual `AppointmentService` rows directly (not a per-appointment
+    `MIN()` aggregate) so the exact soonest row's own service/provider can be
+    surfaced -- the "Coming Up" strip on the front desk page needs the actual
+    service+provider, not just a bare date, the same reasoning as
+    `list_rebooking_opportunities`'s "latest row per patient" pattern. The
+    minimum of each patient's individual service start times is mathematically
+    identical to the minimum of their per-appointment minimums, so this ranks
+    the same "soonest" moment as before -- it just also identifies which row
+    produced it.
     """
     # `get_reference_now` returns a `date_trunc('month', ...)`
     # result, which Postgres always normalizes to midnight on day 1 of that
@@ -638,46 +648,38 @@ async def list_upcoming_appointments(
     reference_date = reference_now.date()
     end_of_reference_day = reference_now + timedelta(days=1)
 
-    # Each non-cancelled appointment's earliest service start time (an
-    # appointment itself has no date/time of its own -- see
-    # AppointmentService), aggregated per appointment so a multi-service
-    # appointment (e.g. consultation + X-ray) collapses to one row. The
-    # provider filter, when given, is applied to AppointmentService BEFORE
-    # this aggregation (not as a HAVING/outer filter after it) so the "soonest"
-    # computed here is that provider's own soonest slot on the appointment.
-    appointment_starts_query = (
+    base = (
         select(
-            Appointment.id.label("appointment_id"),
-            Appointment.patient_id,
-            Appointment.status,
-            func.min(AppointmentService.start).label("start"),
+            Appointment.patient_id, Appointment.id.label("appointment_id"), Appointment.status,
+            AppointmentService.id.label("service_id"), AppointmentService.start,
+            Service.name.label("service_name"),
+            Provider.first_name.label("provider_first_name"), Provider.last_name.label("provider_last_name"),
         )
         .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
-        .where(Appointment.status != "cancelled")
+        .join(Service, Service.id == AppointmentService.service_id)
+        .join(Provider, Provider.id == AppointmentService.provider_id)
+        .where(Appointment.status != "cancelled", AppointmentService.start >= end_of_reference_day)
     )
     if provider_id:
-        appointment_starts_query = appointment_starts_query.where(AppointmentService.provider_id == provider_id)
-    appointment_starts = appointment_starts_query.group_by(
-        Appointment.id, Appointment.patient_id, Appointment.status
-    ).subquery()
+        base = base.where(AppointmentService.provider_id == provider_id)
 
-    # Of each patient's upcoming (after today) appointments, keep only the
+    # Of each patient's upcoming (after today) services, keep only the
     # soonest one -- a patient with several upcoming bookings should appear
     # once, for their next one.
-    upcoming = (
-        select(
-            appointment_starts.c.patient_id, appointment_starts.c.status, appointment_starts.c.start,
-            func.row_number().over(
-                partition_by=appointment_starts.c.patient_id, order_by=appointment_starts.c.start.asc(),
-            ).label("rn"),
-        )
-        .where(appointment_starts.c.start >= end_of_reference_day)
-        .subquery()
-    )
-    soonest_upcoming = select(upcoming).where(upcoming.c.rn == 1).subquery()
+    ranked = base.add_columns(
+        func.row_number().over(
+            partition_by=Appointment.patient_id, order_by=AppointmentService.start.asc(),
+        ).label("rn"),
+    ).subquery()
+    soonest_upcoming = select(ranked).where(ranked.c.rn == 1).subquery()
 
     query = (
-        select(Patient, soonest_upcoming.c.start, soonest_upcoming.c.status)
+        select(
+            Patient, soonest_upcoming.c.start, soonest_upcoming.c.status,
+            soonest_upcoming.c.appointment_id, soonest_upcoming.c.service_id,
+            soonest_upcoming.c.service_name, soonest_upcoming.c.provider_first_name,
+            soonest_upcoming.c.provider_last_name,
+        )
         .join(soonest_upcoming, soonest_upcoming.c.patient_id == Patient.id)
         .order_by(soonest_upcoming.c.start.asc())
     )
@@ -691,8 +693,10 @@ async def list_upcoming_appointments(
             id=patient.id, first_name=patient.first_name, last_name=patient.last_name,
             date_of_birth=patient.date_of_birth.date(), phone=patient.phone, email=patient.email,
             upcoming_appointment_date=appointment_start, appointment_status=status,
+            appointment_id=appointment_id, service_id=service_id,
+            service_name=service_name, provider_name=f"{provider_first} {provider_last}",
         )
-        for patient, appointment_start, status in rows
+        for patient, appointment_start, status, appointment_id, service_id, service_name, provider_first, provider_last in rows
     ]
 
     return UpcomingAppointmentsResponse(

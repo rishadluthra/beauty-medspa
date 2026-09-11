@@ -42,14 +42,27 @@ export function ComingUpStrip() {
         doesn't fit rather than letting it grow the cell.
       */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {/*
+          Links to the Appointment Detail page (with `service_id` so that
+          specific row highlights there), not the Patient Detail page like
+          this used to -- clicking "what's coming up" is about that
+          upcoming visit, matching the same appointment-first mental model
+          Today's Appointments/Calendar already use. No `ctx` is passed:
+          unlike a single day's schedule, "Coming Up" spans arbitrarily
+          many different future days, so there's no single bounded window
+          for Previous/Next to walk -- those buttons simply stay disabled
+          when arriving from here, which is honest given there's no "next
+          item in this list" concept to offer.
+        */}
         {data.items.map((item) => (
           <Link
             key={item.id}
-            href={`/patients/${item.id}`}
+            href={`/appointments/${item.appointment_id}?service_id=${item.service_id}`}
             className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-brand-bg/20 bg-brand-bg/5 px-3 py-2.5 text-center transition-colors hover:border-brand-gold hover:bg-brand-bg/10"
           >
             <span className="w-full truncate text-sm font-medium text-brand-bg">{item.first_name} {item.last_name}</span>
             <span className="w-full truncate text-xs text-brand-bg/60">{formatDate(item.upcoming_appointment_date)}</span>
+            <span className="w-full truncate text-xs text-brand-bg/50">{item.service_name} · {item.provider_name}</span>
           </Link>
         ))}
       </div>

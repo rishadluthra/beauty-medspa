@@ -253,6 +253,11 @@ export interface UpcomingPatientItem {
   email: string;
   upcoming_appointment_date: string;
   appointment_status: string;
+  /** The specific appointment/service row that IS this soonest upcoming slot -- what the "Coming Up" strip links to and shows. */
+  appointment_id: string;
+  service_id: number;
+  service_name: string;
+  provider_name: string;
 }
 
 /** Paginated envelope for the Upcoming Appointments dashboard. */
