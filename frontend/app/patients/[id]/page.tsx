@@ -13,24 +13,82 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 
 import { KpiCard } from "@/components/analytics/KpiCard";
+import { SourceBadge } from "@/components/patients/SourceBadge";
 import { api } from "@/lib/api";
-import { STATUS_COLORS } from "@/lib/chartColors";
+import { APPOINTMENT_STATUS_COLORS, PAYMENT_STATUS_COLORS } from "@/lib/chartColors";
 import { calculateAge, formatCents, formatDate, formatLabel, formatPhone, formatTimeRange } from "@/lib/format";
-import { getSourceBadgeStyle } from "@/lib/sourceColors";
 
-/** Small colored pill for an appointment or payment status, reusing the analytics charts' status palette. */
-function StatusBadge({ status }: { status: string }) {
+/**
+ * A status pill for either an appointment's own status or its payment's
+ * status. These are two *different* fields that happen to share the same
+ * three-ish value shape (a "good", "in-progress", and "bad" state), so
+ * they're deliberately given different color maps (`APPOINTMENT_STATUS_COLORS`
+ * vs `PAYMENT_STATUS_COLORS`) AND different visual weight — `variant="solid"`
+ * for the appointment's own status (the primary fact about the card) and
+ * `variant="outline"` for its payment status (a secondary, related fact) —
+ * so a "Confirmed" appointment sitting next to a "Paid" payment never reads
+ * as the same badge repeated twice.
+ */
+function StatusPill({
+  status,
+  colors,
+  variant = "solid",
+}: {
+  status: string;
+  colors: Record<string, string>;
+  variant?: "solid" | "outline";
+}) {
+  const color = colors[status] ?? "#64748b";
+  if (variant === "outline") {
+    return (
+      <span className="inline-block rounded-full border px-2.5 py-1 text-xs font-medium" style={{ borderColor: color, color }}>
+        {formatLabel(status)}
+      </span>
+    );
+  }
   return (
-    <span
-      className="inline-block rounded-full px-2.5 py-1 text-xs font-medium text-white"
-      style={{ backgroundColor: STATUS_COLORS[status] ?? "#64748b" }}
-    >
+    <span className="inline-block rounded-full px-2.5 py-1 text-xs font-medium text-white" style={{ backgroundColor: color }}>
       {formatLabel(status)}
     </span>
   );
 }
+
+/** One icon+text fact in the header's contact-info row (phone, email, address, joined date). */
+function InfoItem({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+  return (
+    <span className="flex items-center gap-1.5 text-brand-dark/70">
+      {icon}
+      {children}
+    </span>
+  );
+}
+
+const PhoneIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0 text-brand-dark/40">
+    <path d="M3.5 2.5h2l1 3-1.5 1a8 8 0 0 0 4.5 4.5l1-1.5 3 1v2a1 1 0 0 1-1 1A10 10 0 0 1 2.5 3.5a1 1 0 0 1 1-1Z" />
+  </svg>
+);
+const MailIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0 text-brand-dark/40">
+    <rect x="2" y="3.5" width="12" height="9" rx="1.5" />
+    <path d="m2.5 4 5.5 4.5L13.5 4" />
+  </svg>
+);
+const PinIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0 text-brand-dark/40">
+    <path d="M8 14.5s5-4.2 5-8a5 5 0 1 0-10 0c0 3.8 5 8 5 8Z" />
+    <circle cx="8" cy="6.5" r="1.75" />
+  </svg>
+);
+const CalendarIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0 text-brand-dark/40">
+    <rect x="2.5" y="3" width="11" height="10.5" rx="1.5" />
+    <path d="M2.5 6.5h11M5.5 1.5v3M10.5 1.5v3" />
+  </svg>
+);
 
 /** Top-level route component for `/patients/[id]`. */
 export default function PatientDetailPage() {
@@ -41,6 +99,8 @@ export default function PatientDetailPage() {
     queryKey: ["patient", patientId],
     queryFn: () => api.getPatientDetail(patientId),
   });
+
+  const initials = data ? `${data.patient.first_name[0]}${data.patient.last_name[0]}`.toUpperCase() : "";
 
   return (
     <div className="space-y-6">
@@ -58,28 +118,43 @@ export default function PatientDetailPage() {
       {data && (
         <>
           <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-6 text-brand-dark shadow-lg shadow-brand-gold/10">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-gold to-brand-gold-dark text-lg font-semibold text-white">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-2xl font-semibold">
                   {data.patient.first_name} {data.patient.last_name}
                 </h1>
-                <p className="mt-1 text-sm text-brand-dark/60">
+                <p className="text-sm text-brand-dark/60">
                   {calculateAge(data.patient.date_of_birth)} years old · {formatLabel(data.patient.gender)}
                 </p>
               </div>
-              <span
-                className="inline-block rounded-full px-3 py-1 text-xs font-medium text-white"
-                style={getSourceBadgeStyle(data.patient.source)}
-              >
-                {formatLabel(data.patient.source)}
-              </span>
+              {/*
+                A bare colored pill reading e.g. "Instagram" doesn't say
+                what field it is unless you already know — the small
+                "Source" caption above it (mirroring `KpiCard`'s
+                label-above-value pattern) makes it self-explanatory: this
+                is how the patient found the practice.
+              */}
+              <div className="text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-dark/40">Source</p>
+                <div className="mt-1"><SourceBadge source={data.patient.source} /></div>
+              </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-sm text-brand-dark/80 sm:grid-cols-2">
-              <p><span className="text-brand-dark/50">Phone:</span> {formatPhone(data.patient.phone)}</p>
-              <p><span className="text-brand-dark/50">Email:</span> {data.patient.email}</p>
-              <p><span className="text-brand-dark/50">Address:</span> {data.patient.address}</p>
-              <p><span className="text-brand-dark/50">Joined:</span> {formatDate(data.patient.created_date)}</p>
+            {/*
+              An icon-led row that wraps naturally (each item only takes
+              the width its own text needs) reads as tightly packed at any
+              card width, instead of a sparse two-column grid that leaves
+              a wide empty gap on the right when the card is wider than
+              four short lines of text need.
+            */}
+            <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-brand-dark/10 pt-4 text-sm">
+              <InfoItem icon={<PhoneIcon />}>{formatPhone(data.patient.phone)}</InfoItem>
+              <InfoItem icon={<MailIcon />}>{data.patient.email}</InfoItem>
+              <InfoItem icon={<PinIcon />}>{data.patient.address}</InfoItem>
+              <InfoItem icon={<CalendarIcon />}>Joined {formatDate(data.patient.created_date)}</InfoItem>
             </div>
           </div>
 
@@ -101,7 +176,17 @@ export default function PatientDetailPage() {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium">{formatDate(appointment.created_date)}</p>
-                  <StatusBadge status={appointment.status} />
+                  {/*
+                    Explicitly labeled "Status" — pending/confirmed/cancelled
+                    describes the appointment's own lifecycle (was it booked
+                    and will it happen), which is a different fact from
+                    whether it was paid for below, and needs the label to
+                    not be confused with it.
+                  */}
+                  <span className="flex items-center gap-1.5 text-xs text-brand-dark/50">
+                    Status
+                    <StatusPill status={appointment.status} colors={APPOINTMENT_STATUS_COLORS} variant="solid" />
+                  </span>
                 </div>
 
                 {/*
@@ -131,7 +216,7 @@ export default function PatientDetailPage() {
                   {appointment.payment ? (
                     <span className="flex items-center gap-2">
                       {formatCents(appointment.payment.amount_cents)} · {formatLabel(appointment.payment.method)}
-                      <StatusBadge status={appointment.payment.status} />
+                      <StatusPill status={appointment.payment.status} colors={PAYMENT_STATUS_COLORS} variant="outline" />
                     </span>
                   ) : (
                     <span className="text-brand-dark/40">Unpaid</span>

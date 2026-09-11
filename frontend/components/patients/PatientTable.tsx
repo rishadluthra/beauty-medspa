@@ -14,8 +14,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api, type PatientQueryParams } from "@/lib/api";
 import { calculateAge, formatCents, formatDate, formatLabel } from "@/lib/format";
-import { getSourceBadgeStyle } from "@/lib/sourceColors";
 import { PatientFilters } from "./PatientFilters";
+import { SourceBadge } from "./SourceBadge";
 
 const PAGE_SIZE = 25;
 
@@ -62,18 +62,35 @@ export function PatientTable() {
             (phone, email, address, and per-visit history all live one
             click away on the Patient Detail page instead) — this is the
             "most relevant at a glance" view, not the whole record.
+
+            A plain HTML <table> doesn't reflow for narrow screens (its
+            columns just get uncomfortably cramped, or force horizontal
+            scrolling), so below `sm` it's replaced entirely by a stacked
+            card list showing the same data in a mobile-appropriate
+            layout — this is the actual "works on all screen sizes" fix,
+            not just letting the table scroll sideways.
           */}
-          <div className="overflow-x-auto rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10">
-            <table className="w-full text-sm">
+          <div className="hidden overflow-hidden rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10 sm:block">
+            {/*
+              `table-fixed` with an explicit percentage width on every
+              column (not just the narrow ones) is what keeps the columns
+              evenly, predictably spaced. Without it, the browser's default
+              auto-layout distributes all of the table's leftover width
+              across whichever columns *don't* have a width — since this
+              table is inside a now width-capped page (see layout.tsx),
+              that used to mean a handful of short-text columns getting
+              stretched into huge, uneven gaps.
+            */}
+            <table className="w-full table-fixed text-sm">
               <thead className="bg-brand-gold/10 text-left text-brand-dark">
                 <tr>
-                  <th className="p-3 font-semibold">Name</th>
-                  <th className="w-16 p-3 font-semibold">Age</th>
-                  <th className="p-3 font-semibold">Gender</th>
-                  <th className="p-3 font-semibold">Source</th>
-                  <th className="p-3 font-semibold">Joined</th>
-                  <th className="w-20 p-3 font-semibold">Visits</th>
-                  <th className="w-24 p-3 text-right font-semibold">Spent</th>
+                  <th className="w-[26%] p-3 font-semibold">Name</th>
+                  <th className="w-[8%] p-3 font-semibold">Age</th>
+                  <th className="w-[13%] p-3 font-semibold">Gender</th>
+                  <th className="w-[17%] p-3 font-semibold">Source</th>
+                  <th className="w-[16%] p-3 font-semibold">Joined</th>
+                  <th className="w-[10%] p-3 font-semibold">Visits</th>
+                  <th className="w-[10%] p-3 text-right font-semibold">Spent</th>
                 </tr>
               </thead>
               <tbody className="text-brand-dark">
@@ -97,17 +114,10 @@ export function PatientTable() {
                     onClick={() => router.push(`/patients/${patient.id}`)}
                     className="cursor-pointer border-t border-brand-dark/10 hover:bg-brand-gold/5"
                   >
-                    <td className="p-3">{patient.first_name} {patient.last_name}</td>
+                    <td className="truncate p-3">{patient.first_name} {patient.last_name}</td>
                     <td className="p-3">{calculateAge(patient.date_of_birth)}</td>
                     <td className="p-3">{formatLabel(patient.gender)}</td>
-                    <td className="p-3">
-                      <span
-                        className="inline-block rounded-full px-2.5 py-1 text-xs font-medium text-white"
-                        style={getSourceBadgeStyle(patient.source)}
-                      >
-                        {formatLabel(patient.source)}
-                      </span>
-                    </td>
+                    <td className="p-3"><SourceBadge source={patient.source} size="compact" /></td>
                     <td className="p-3">{formatDate(patient.created_date)}</td>
                     <td className="p-3">{patient.appointment_count}</td>
                     <td className="p-3 text-right">{formatCents(patient.total_spent_cents)}</td>
@@ -117,7 +127,35 @@ export function PatientTable() {
             </table>
           </div>
 
-          <div className="flex items-center justify-between text-sm">
+          {/* Mobile equivalent of the table above — same rows, same click-through, laid out as cards instead of columns. */}
+          <div className="space-y-2 sm:hidden">
+            {data.items.length === 0 && (
+              <p className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-6 text-center text-brand-sage shadow-lg shadow-brand-gold/10">
+                No patients match these filters.
+              </p>
+            )}
+            {data.items.map((patient) => (
+              <div
+                key={patient.id}
+                onClick={() => router.push(`/patients/${patient.id}`)}
+                className="cursor-pointer rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium">{patient.first_name} {patient.last_name}</p>
+                  <SourceBadge source={patient.source} size="compact" />
+                </div>
+                <p className="mt-1 text-sm text-brand-dark/60">
+                  {calculateAge(patient.date_of_birth)} · {formatLabel(patient.gender)} · Joined {formatDate(patient.created_date)}
+                </p>
+                <div className="mt-2 flex items-center justify-between text-sm">
+                  <span className="text-brand-dark/70">{patient.appointment_count} visits</span>
+                  <span className="font-medium">{formatCents(patient.total_spent_cents)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span className="text-brand-bg/70">
               Showing {(data.page - 1) * data.page_size + 1}–{Math.min(data.page * data.page_size, data.total)} of {data.total}
             </span>

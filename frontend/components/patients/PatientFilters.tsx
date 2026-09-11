@@ -101,9 +101,14 @@ export function PatientFilters({ filters, onChange }: Props) {
         )}
       </button>
 
-      {/* Anchored to the button's right edge; `origin-top-right` makes it visibly unfold leftward/downward from that corner. */}
+      {/*
+        Anchored to the button's right edge; `origin-top-right` makes it
+        visibly unfold leftward/downward from that corner. Width is capped
+        at `calc(100vw-1.5rem)` so it can never overflow off the left edge
+        of a narrow phone screen the way a fixed `22rem` would below ~370px.
+      */}
       <div
-        className={`absolute right-0 top-full z-30 mt-2 w-[22rem] origin-top-right rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 shadow-xl transition-all duration-150 ease-out ${
+        className={`absolute right-0 top-full z-30 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] origin-top-right rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 shadow-xl transition-all duration-150 ease-out ${
           isOpen ? "scale-100 opacity-100" : "pointer-events-none scale-95 opacity-0"
         }`}
       >

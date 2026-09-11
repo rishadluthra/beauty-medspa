@@ -49,7 +49,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </nav>
           </div>
-          <main className="p-6">{children}</main>
+          {/*
+            Capped at the same `max-w-7xl` as the nav above, so page
+            content lines up under it instead of stretching edge-to-edge
+            on wide monitors — without this, a table with only a handful
+            of short-text columns spreads them across the full viewport
+            width with huge, uneven gaps between them.
+          */}
+          <main className="mx-auto max-w-7xl px-3 py-6 lg:px-8">{children}</main>
         </Providers>
       </body>
     </html>

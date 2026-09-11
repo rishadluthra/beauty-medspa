@@ -43,3 +43,27 @@ export const STATUS_COLORS: Record<string, string> = {
   cancelled: BRAND.rust,
   failed: BRAND.rust,
 };
+
+/**
+ * Appointment status and payment status are two *different* fields that
+ * happen to share a "good/in-progress/bad" shape, so `STATUS_COLORS` gives
+ * them the same colors (confirmed == paid == sage). That's fine when only
+ * one of the two is on screen at a time (each analytics chart shows only
+ * one), but on the Patient Detail page both appear side by side on the
+ * same appointment card — an identically-colored "Confirmed" appointment
+ * badge next to a "Paid" payment badge reads as one repeated fact instead
+ * of two distinct ones. These two maps exist specifically for that
+ * side-by-side case, using entirely different hue families so the two
+ * fields are visually distinguishable independent of their text labels.
+ */
+export const APPOINTMENT_STATUS_COLORS: Record<string, string> = {
+  pending: BRAND.gold,
+  confirmed: BRAND.sage,
+  cancelled: BRAND.rust,
+};
+
+export const PAYMENT_STATUS_COLORS: Record<string, string> = {
+  pending: BRAND.khaki,
+  paid: BRAND.navyTeal,
+  failed: BRAND.rust,
+};
