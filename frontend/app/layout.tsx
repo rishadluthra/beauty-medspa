@@ -119,7 +119,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             phone) enough to visibly truncate real content, not just leave
             extra whitespace.
           */}
-          <main className="mx-auto max-w-5xl px-3 py-6 lg:px-8 2xl:max-w-7xl">{children}</main>
+          {/*
+            `pt-10` (not the same `py-6` the bottom keeps) -- the sticky nav
+            sits close above this, and the previous even top/bottom padding
+            left barely any breathing room between the nav's own bottom
+            edge and the page's first heading, reported as visibly cramped.
+          */}
+          <main className="mx-auto max-w-5xl px-3 pb-6 pt-10 lg:px-8 2xl:max-w-7xl">{children}</main>
         </Providers>
       </body>
     </html>
