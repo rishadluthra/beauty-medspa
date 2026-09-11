@@ -152,3 +152,29 @@ export interface PatientDetailResponse {
   previous_patient_id: string | null;
   next_patient_id: string | null;
 }
+
+/** One row in the Upcoming Appointments dashboard, as returned by `GET /api/patients/upcoming`. */
+export interface UpcomingPatientItem {
+  id: string;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  phone: string;
+  email: string;
+  upcoming_appointment_date: string;
+  appointment_status: string;
+  /** True when this patient's upcoming appointment is on the view's `reference_date` and still "pending". */
+  needs_confirmation: boolean;
+  /** True when this patient has a past, non-cancelled appointment with no payment on record. */
+  has_unpaid_appointment: boolean;
+}
+
+/** Paginated envelope for the Upcoming Appointments dashboard. */
+export interface UpcomingAppointmentsResponse {
+  items: UpcomingPatientItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  /** The effective "today" this view was computed against — see the backend for why it isn't always the real current date. */
+  reference_date: string;
+}

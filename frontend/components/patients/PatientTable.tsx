@@ -40,15 +40,14 @@ export function PatientTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-brand-bg">Patients</h1>
-        {/*
-          Any filter/search/sort change resets page back to 1 (see the
-          `page: 1` merged in below). Without this, narrowing a filter could
-          leave the user "stuck" on e.g. page 5 when the new filter only
-          produces 2 pages of results, showing an empty page instead of the
-          top of the new result set.
-        */}
+      {/*
+        Any filter/search/sort change resets page back to 1 (see the
+        `page: 1` merged in below). Without this, narrowing a filter could
+        leave the user "stuck" on e.g. page 5 when the new filter only
+        produces 2 pages of results, showing an empty page instead of the
+        top of the new result set.
+      */}
+      <div className="flex justify-end">
         <PatientFilters filters={filters} onChange={(next) => setFilters({ ...filters, ...next, page: 1 })} />
       </div>
 

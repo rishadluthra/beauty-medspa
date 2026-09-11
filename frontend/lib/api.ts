@@ -20,6 +20,7 @@ import type {
   RevenuePoint,
   SourceBreakdownItem,
   TopServiceItem,
+  UpcomingAppointmentsResponse,
 } from "./types";
 
 // `NEXT_PUBLIC_*` env vars are inlined into the JS bundle at build time (not
@@ -74,6 +75,9 @@ export interface PatientQueryParams {
 export const api = {
   /** Fetches a page of the patient table, with optional search/filter/sort. */
   getPatients: (params: PatientQueryParams) => apiGet<PatientListResponse>("/api/patients", { ...params }),
+  /** Fetches a page of the Upcoming Appointments dashboard (the default Patients-page view). */
+  getUpcomingAppointments: (params: { page?: number; page_size?: number }) =>
+    apiGet<UpcomingAppointmentsResponse>("/api/patients/upcoming", { ...params }),
   /**
    * Fetches one patient's full profile plus their complete appointment
    * history, for the Patient Detail page. Resolves to `null` (rather than

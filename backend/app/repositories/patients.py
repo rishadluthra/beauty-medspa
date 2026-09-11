@@ -8,7 +8,7 @@ service as "tools" over the data.
 """
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +22,14 @@ from app.schemas.patient import (
     PatientListItem,
     PatientListResponse,
     PaymentSummary,
+    UpcomingAppointmentsResponse,
+    UpcomingPatientItem,
 )
+
+# How far before the latest scheduled appointment in the data the Upcoming
+# Appointments view's reference "today" sits -- see
+# `_get_upcoming_reference_now` for why this exists at all.
+UPCOMING_REFERENCE_OFFSET_DAYS = 14
 
 
 def _years_before(from_date: date, years: int) -> date:
@@ -300,4 +307,135 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
         appointments=appointment_items,
         previous_patient_id=previous_patient_id,
         next_patient_id=next_patient_id,
+    )
+
+
+async def _get_upcoming_reference_now(db: AsyncSession) -> datetime:
+    """The effective "today" for the Upcoming Appointments view.
+
+    This seed dataset is a frozen snapshot: its latest scheduled
+    appointment is already in the past relative to the real wall-clock
+    date (verified directly against the data -- the last
+    `AppointmentService.start` is 2026-01-24, well before the real
+    current date). Anchoring "today" to `datetime.utcnow()` would make
+    this view permanently, silently empty against this snapshot -- not a
+    bug exactly, but a useless one.
+
+    Instead, "today" is computed as a fixed offset before the latest
+    appointment time actually present in the data, so the view stays
+    meaningfully populated regardless of when it's viewed. This is a
+    deliberate accommodation for static seed/demo data; against a live
+    production database (where new appointments keep getting scheduled
+    into the real future), this should simply be `datetime.utcnow()`.
+    """
+    max_start = (await db.execute(select(func.max(AppointmentService.start)))).scalar_one()
+    if max_start is None:
+        return datetime.utcnow()
+    return max_start - timedelta(days=UPCOMING_REFERENCE_OFFSET_DAYS)
+
+
+async def list_upcoming_appointments(
+    db: AsyncSession, page: int = 1, page_size: int = 25,
+) -> UpcomingAppointmentsResponse:
+    """List patients by their soonest upcoming appointment, for the front-desk-facing dashboard.
+
+    One row per patient (their single *soonest* non-cancelled appointment
+    on or after the reference "today" -- see `_get_upcoming_reference_now`),
+    sorted soonest-first, with two follow-up signals a front desk agent
+    would actually triage by:
+
+    - `needs_confirmation`: that soonest appointment falls on the
+      reference "today" itself and is still "pending" -- something to
+      call and confirm today.
+    - `has_unpaid_appointment`: this patient has *any* past, non-cancelled
+      appointment with no `Payment` row at all. This is checked instead
+      of a "failed" payment status because the real seed data has zero
+      failed/pending payments (all 5,311 are "paid") -- a failed-status
+      check would never fire. 689 of the 6,000 appointments have no
+      payment record at all, which is the actual, populated billing gap
+      worth surfacing.
+    """
+    reference_now = await _get_upcoming_reference_now(db)
+    # The "upcoming vs. past" dividing line is the *start of the reference
+    # day*, not the exact `reference_now` timestamp. `reference_now` carries
+    # whatever arbitrary time-of-day happened to come from the data it was
+    # derived from (see `_get_upcoming_reference_now`) -- comparing against
+    # it directly would silently exclude a same-day appointment scheduled
+    # earlier that day (e.g. a 9am appointment when reference_now's time
+    # component is 12:15pm), even though it's still "today" and exactly the
+    # kind of thing `needs_confirmation` exists to catch.
+    reference_date = reference_now.date()
+    reference_start_of_day = datetime.combine(reference_date, time.min)
+
+    # Each non-cancelled appointment's earliest service start time (an
+    # appointment itself has no date/time of its own -- see
+    # AppointmentService), aggregated per appointment so a multi-service
+    # appointment (e.g. consultation + X-ray) collapses to one row.
+    appointment_starts = (
+        select(
+            Appointment.id.label("appointment_id"),
+            Appointment.patient_id,
+            Appointment.status,
+            func.min(AppointmentService.start).label("start"),
+        )
+        .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
+        .where(Appointment.status != "cancelled")
+        .group_by(Appointment.id, Appointment.patient_id, Appointment.status)
+        .subquery()
+    )
+
+    # Of each patient's upcoming (>= start of the reference day) appointments,
+    # keep only the soonest one -- a patient with several upcoming bookings
+    # should appear once, for their next one.
+    upcoming = (
+        select(
+            appointment_starts.c.patient_id, appointment_starts.c.status, appointment_starts.c.start,
+            func.row_number().over(
+                partition_by=appointment_starts.c.patient_id, order_by=appointment_starts.c.start.asc(),
+            ).label("rn"),
+        )
+        .where(appointment_starts.c.start >= reference_start_of_day)
+        .subquery()
+    )
+    soonest_upcoming = select(upcoming).where(upcoming.c.rn == 1).subquery()
+
+    # Patients with at least one past (before the reference day),
+    # non-cancelled appointment that has no Payment row at all -- see
+    # docstring above for why this is the meaningful "unpaid" signal in
+    # this dataset.
+    unpaid_patients = (
+        select(appointment_starts.c.patient_id)
+        .outerjoin(Payment, Payment.appointment_id == appointment_starts.c.appointment_id)
+        .where(appointment_starts.c.start < reference_start_of_day, Payment.id.is_(None))
+        .distinct()
+        .subquery()
+    )
+
+    query = (
+        select(
+            Patient, soonest_upcoming.c.start, soonest_upcoming.c.status,
+            unpaid_patients.c.patient_id.isnot(None).label("has_unpaid_appointment"),
+        )
+        .join(soonest_upcoming, soonest_upcoming.c.patient_id == Patient.id)
+        .outerjoin(unpaid_patients, unpaid_patients.c.patient_id == Patient.id)
+        .order_by(soonest_upcoming.c.start.asc())
+    )
+
+    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    rows = (await db.execute(query)).all()
+
+    items = [
+        UpcomingPatientItem(
+            id=patient.id, first_name=patient.first_name, last_name=patient.last_name,
+            date_of_birth=patient.date_of_birth.date(), phone=patient.phone, email=patient.email,
+            upcoming_appointment_date=appointment_start, appointment_status=status,
+            needs_confirmation=(appointment_start.date() == reference_date and status == "pending"),
+            has_unpaid_appointment=bool(has_unpaid_appointment),
+        )
+        for patient, appointment_start, status, has_unpaid_appointment in rows
+    ]
+
+    return UpcomingAppointmentsResponse(
+        items=items, total=total, page=page, page_size=page_size, reference_date=reference_date,
     )

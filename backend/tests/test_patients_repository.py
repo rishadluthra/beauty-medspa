@@ -5,9 +5,15 @@ HTTP layer -- see test_patients_router.py for that), covering the
 aggregation logic (spend totals, appointment counts) and filtering.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
-from app.repositories.patients import PatientFilters, get_patient_detail, list_patients
+from app.repositories.patients import (
+    UPCOMING_REFERENCE_OFFSET_DAYS,
+    PatientFilters,
+    get_patient_detail,
+    list_patients,
+    list_upcoming_appointments,
+)
 from tests.factories import (
     make_appointment,
     make_appointment_service,
@@ -226,3 +232,77 @@ async def test_get_patient_detail_includes_adjacent_patient_ids_for_navigation(d
     last = await get_patient_detail(db_session, "pat_carter")
     assert last.previous_patient_id == "pat_baker"
     assert last.next_patient_id is None
+
+
+async def test_list_upcoming_appointments_computes_reference_date_and_follow_up_flags(db_session):
+    """Covers the whole Upcoming Appointments contract in one seeded scenario:
+
+    - `reference_date` is derived from the latest AppointmentService.start in the data
+      (max_start - UPCOMING_REFERENCE_OFFSET_DAYS), not the real wall-clock date.
+    - Each patient shows their *soonest* upcoming (non-cancelled, >= reference_now)
+      appointment, even when they have more than one qualifying appointment (pat_a).
+    - `needs_confirmation` is true only for a "pending" appointment landing on the
+      reference date itself (pat_b) -- including one scheduled *earlier* in that day
+      than `reference_now`'s own arbitrary time-of-day component (10:00 here), since
+      the upcoming/past boundary is the start of the reference day, not that exact
+      timestamp.
+    - `has_unpaid_appointment` is true only for a *non-cancelled* past appointment with
+      no Payment row (pat_a); a cancelled past appointment with no payment (pat_c)
+      must NOT trigger it.
+    - A patient with no upcoming appointment at all (pat_d) doesn't appear.
+    """
+    max_start = datetime(2026, 2, 1, 10, 0)
+    reference_now = max_start - timedelta(days=UPCOMING_REFERENCE_OFFSET_DAYS)
+
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Alice", last_name="Anderson"),
+        make_patient(id="pat_b", first_name="Bob", last_name="Baker"),
+        make_patient(id="pat_c", first_name="Carol", last_name="Carter"),
+        make_patient(id="pat_d", first_name="Dana", last_name="Dean"),
+        make_provider(), make_service(),
+        make_appointment(id="apt_a_past", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_a_upcoming", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_a_max", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_b_upcoming", patient_id="pat_b", status="pending"),
+        make_appointment(id="apt_c_past_cancelled", patient_id="pat_c", status="cancelled"),
+        make_appointment(id="apt_c_upcoming", patient_id="pat_c", status="confirmed"),
+        make_appointment(id="apt_d_past", patient_id="pat_d", status="confirmed"),
+    ])
+    await db_session.flush()
+
+    def _svc(appointment_id, start):
+        return make_appointment_service(appointment_id=appointment_id, start=start, end=start + timedelta(minutes=30))
+
+    db_session.add_all([
+        _svc("apt_a_past", reference_now - timedelta(days=30)),
+        _svc("apt_a_upcoming", reference_now + timedelta(days=2)),
+        _svc("apt_a_max", max_start),  # the row that actually sets max_start
+        # 08:00, deliberately *before* reference_now's own 10:00 time-of-day
+        # component, to prove the cutoff is the start of the day, not that
+        # exact timestamp.
+        _svc("apt_b_upcoming", reference_now.replace(hour=8, minute=0)),
+        _svc("apt_c_past_cancelled", reference_now - timedelta(days=10)),
+        _svc("apt_c_upcoming", reference_now + timedelta(days=5)),
+        _svc("apt_d_past", reference_now - timedelta(days=5)),
+        # Deliberately no Payment rows for any appointment -- pat_a's and
+        # pat_c's past appointments are both unpaid; only pat_a's should count
+        # since pat_c's is cancelled.
+    ])
+    await db_session.commit()
+
+    result = await list_upcoming_appointments(db_session)
+
+    assert result.reference_date == reference_now.date()
+
+    by_id = {item.id: item for item in result.items}
+    assert "pat_d" not in by_id
+
+    assert by_id["pat_a"].upcoming_appointment_date == reference_now + timedelta(days=2)
+    assert by_id["pat_a"].has_unpaid_appointment is True
+    assert by_id["pat_a"].needs_confirmation is False
+
+    assert by_id["pat_b"].needs_confirmation is True
+    assert by_id["pat_b"].has_unpaid_appointment is False
+
+    assert by_id["pat_c"].has_unpaid_appointment is False
+    assert by_id["pat_c"].needs_confirmation is False

@@ -67,3 +67,22 @@ async def test_get_patient_endpoint_404s_for_unknown_id(db_session):
     assert response.status_code == 404
 
     app.dependency_overrides.clear()
+
+
+async def test_get_upcoming_appointments_endpoint_is_reachable(db_session):
+    """GET /api/patients/upcoming must resolve to its own handler, not fall through to
+    /api/patients/{patient_id} with patient_id="upcoming" -- this only works because the
+    static route is registered before the dynamic one in the router.
+    """
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/patients/upcoming")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert "reference_date" in body
+
+    app.dependency_overrides.clear()

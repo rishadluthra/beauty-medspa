@@ -13,8 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.repositories.patients import PatientFilters, get_patient_detail, list_patients
-from app.schemas.patient import PatientDetailResponse, PatientListResponse
+from app.repositories.patients import PatientFilters, get_patient_detail, list_patients, list_upcoming_appointments
+from app.schemas.patient import PatientDetailResponse, PatientListResponse, UpcomingAppointmentsResponse
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -47,6 +47,25 @@ async def get_patients(
         age_min=age_min, age_max=age_max,
     )
     return await list_patients(db, filters, sort=sort, page=page, page_size=page_size)
+
+
+# Registered BEFORE `/{patient_id}` below -- FastAPI matches routes in
+# registration order, so a static "/upcoming" path declared after the
+# "/{patient_id}" dynamic route would never be reached (it would always
+# match "/{patient_id}" first, with patient_id="upcoming").
+@router.get("/upcoming", response_model=UpcomingAppointmentsResponse)
+async def get_upcoming_appointments(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+) -> UpcomingAppointmentsResponse:
+    """List patients by their soonest upcoming appointment, for the front-desk dashboard's default view.
+
+    See `list_upcoming_appointments` for what "upcoming" means against
+    this static seed dataset, and what the `needs_confirmation` /
+    `has_unpaid_appointment` follow-up flags are actually based on.
+    """
+    return await list_upcoming_appointments(db, page=page, page_size=page_size)
 
 
 @router.get("/{patient_id}", response_model=PatientDetailResponse)

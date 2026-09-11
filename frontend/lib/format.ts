@@ -35,6 +35,19 @@ export function formatDate(value: string | null): string {
 }
 
 /**
+ * Formats an ISO datetime string as a date *and* time on one line (e.g.
+ * `"Jan 12, 2026 · 8:15 AM"`) — used where the time-of-day itself matters
+ * (an upcoming appointment slot), unlike `formatDate`, which only ever
+ * shows a date.
+ */
+export function formatDateTime(value: string): string {
+  const date = new Date(value);
+  const datePart = date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  const timePart = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${datePart} · ${timePart}`;
+}
+
+/**
  * Turns a snake_case enum-ish value into a human-readable, title-cased label
  * (e.g. `"in_person"` -> `"In Person"`).
  *

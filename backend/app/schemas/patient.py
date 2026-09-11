@@ -103,3 +103,39 @@ class PatientDetailResponse(BaseModel):
     appointments: list[AppointmentDetail]
     previous_patient_id: str | None
     next_patient_id: str | None
+
+
+class UpcomingPatientItem(BaseModel):
+    """One row in the Upcoming Appointments dashboard: a patient with a scheduled future
+    appointment, plus the two follow-up signals a front desk agent would triage by.
+
+    `needs_confirmation` is true when this patient's soonest upcoming appointment falls on
+    the view's reference "today" (see `list_upcoming_appointments`) and is still "pending"
+    (not yet confirmed) -- something to call about today. `has_unpaid_appointment` is true
+    when this patient has at least one *past*, non-cancelled appointment with no `Payment`
+    record at all -- a real billing gap to follow up on. See `list_upcoming_appointments`
+    for why this isn't based on a "failed" payment status (the seed data has none).
+    """
+
+    id: str
+    first_name: str
+    last_name: str
+    date_of_birth: date
+    phone: str
+    email: str
+    upcoming_appointment_date: datetime
+    appointment_status: str
+    needs_confirmation: bool
+    has_unpaid_appointment: bool
+
+
+class UpcomingAppointmentsResponse(BaseModel):
+    """A page of the Upcoming Appointments dashboard, plus the reference date it was computed against."""
+
+    items: list[UpcomingPatientItem]
+    total: int
+    page: int
+    page_size: int
+    # The effective "today" this view was computed against -- see
+    # `list_upcoming_appointments` for why this isn't always the real current date.
+    reference_date: date
