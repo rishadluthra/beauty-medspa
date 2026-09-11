@@ -100,3 +100,52 @@ export interface DemographicsResponse {
   gender_breakdown: GenderCount[];
   age_buckets: AgeBucketCount[];
 }
+
+/** One billed service performed during an appointment, with its provider and time window. */
+export interface AppointmentServiceItem {
+  service_name: string;
+  provider_name: string;
+  start: string;
+  end: string;
+  price_cents: number;
+}
+
+/** The payment tied to one appointment. Appointments without a payment have none at all. */
+export interface PaymentSummary {
+  amount_cents: number;
+  method: string;
+  status: string;
+  date: string;
+}
+
+/** One appointment in a patient's history: its status, every service performed, and its payment. */
+export interface AppointmentDetail {
+  id: string;
+  status: string;
+  created_date: string;
+  services: AppointmentServiceItem[];
+  payment: PaymentSummary | null;
+}
+
+/** Full patient profile for the detail page — includes fields (like `address`) the table omits. */
+export interface PatientDetail {
+  id: string;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  gender: string;
+  address: string;
+  phone: string;
+  email: string;
+  source: string;
+  created_date: string;
+  appointment_count: number;
+  last_appointment_date: string | null;
+  total_spent_cents: number;
+}
+
+/** Response for `GET /api/patients/{id}`: the profile plus the full appointment history. */
+export interface PatientDetailResponse {
+  patient: PatientDetail;
+  appointments: AppointmentDetail[];
+}

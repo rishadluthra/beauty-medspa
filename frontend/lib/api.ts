@@ -13,6 +13,7 @@ import type {
   AppointmentStatusItem,
   DemographicsResponse,
   OverviewStats,
+  PatientDetailResponse,
   PatientListResponse,
   PaymentStatusItem,
   ProviderUtilizationItem,
@@ -73,6 +74,18 @@ export interface PatientQueryParams {
 export const api = {
   /** Fetches a page of the patient table, with optional search/filter/sort. */
   getPatients: (params: PatientQueryParams) => apiGet<PatientListResponse>("/api/patients", { ...params }),
+  /**
+   * Fetches one patient's full profile plus their complete appointment
+   * history, for the Patient Detail page. Resolves to `null` (rather than
+   * throwing) when the patient doesn't exist, so the detail page can
+   * render a clean "not found" state instead of a generic error.
+   */
+  getPatientDetail: async (id: string): Promise<PatientDetailResponse | null> => {
+    const response = await fetch(`${API_BASE_URL}/api/patients/${encodeURIComponent(id)}`);
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    return response.json() as Promise<PatientDetailResponse>;
+  },
   /** Fetches the Analytics page's top-line KPI summary. */
   getOverview: () => apiGet<OverviewStats>("/api/analytics/overview"),
   /** Fetches revenue totals bucketed over time, for the revenue chart. */

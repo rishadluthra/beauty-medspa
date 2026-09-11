@@ -91,6 +91,19 @@ export function formatPhone(value: string): string {
 }
 
 /**
+ * Formats a start/end ISO datetime pair as a single time range on one line
+ * (e.g. `"9:00 AM – 9:30 AM"`) for an appointment service's time slot. Only
+ * the time is shown, not the date — the enclosing appointment card already
+ * shows the date once for all of its services.
+ */
+export function formatTimeRange(start: string, end: string): string {
+  const timeOptions: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  const startLabel = new Date(start).toLocaleTimeString("en-US", timeOptions);
+  const endLabel = new Date(end).toLocaleTimeString("en-US", timeOptions);
+  return `${startLabel} – ${endLabel}`;
+}
+
+/**
  * Computes a whole-number age in years from an ISO date-of-birth string,
  * accounting for whether this year's birthday has happened yet (not just
  * a naive year subtraction).

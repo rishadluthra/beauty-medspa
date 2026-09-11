@@ -9,10 +9,11 @@
  */
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, type PatientQueryParams } from "@/lib/api";
-import { calculateAge, formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
+import { calculateAge, formatCents, formatDate, formatLabel } from "@/lib/format";
 import { getSourceBadgeStyle } from "@/lib/sourceColors";
 import { PatientFilters } from "./PatientFilters";
 
@@ -29,6 +30,7 @@ const PAGE_SIZE = 25;
  * The full ~4,000-patient set is never loaded into the browser at once.
  */
 export function PatientTable() {
+  const router = useRouter();
   const [filters, setFilters] = useState<PatientQueryParams>({ page: 1, page_size: PAGE_SIZE, sort: "name" });
 
   const { data, isLoading, isError } = useQuery({
@@ -55,6 +57,12 @@ export function PatientTable() {
 
       {data && (
         <>
+          {/*
+            Deliberately fewer columns than the full patient record holds
+            (phone, email, address, and per-visit history all live one
+            click away on the Patient Detail page instead) — this is the
+            "most relevant at a glance" view, not the whole record.
+          */}
           <div className="overflow-x-auto rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10">
             <table className="w-full text-sm">
               <thead className="bg-brand-gold/10 text-left text-brand-dark">
@@ -62,37 +70,36 @@ export function PatientTable() {
                   <th className="p-3 font-semibold">Name</th>
                   <th className="w-16 p-3 font-semibold">Age</th>
                   <th className="p-3 font-semibold">Gender</th>
-                  <th className="p-3 font-semibold">Phone</th>
-                  <th className="p-3 font-semibold">Email</th>
                   <th className="p-3 font-semibold">Source</th>
                   <th className="p-3 font-semibold">Joined</th>
                   <th className="w-20 p-3 font-semibold">Visits</th>
-                  <th className="p-3 font-semibold">Last Visit</th>
                   <th className="w-24 p-3 text-right font-semibold">Spent</th>
                 </tr>
               </thead>
               <tbody className="text-brand-dark">
                 {/*
-                  Empty-state row. colSpan={10} must match the number of
+                  Empty-state row. colSpan={7} must match the number of
                   <th> columns in the header above (Name, Age, Gender,
-                  Phone, Email, Source, Joined, Visits, Last Visit, Spent)
-                  — if a column is ever added/removed, update this number
-                  too or the empty-state cell will misalign.
+                  Source, Joined, Visits, Spent) — if a column is ever
+                  added/removed, update this number too or the empty-state
+                  cell will misalign.
                 */}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="p-6 text-center text-brand-sage">
+                    <td colSpan={7} className="p-6 text-center text-brand-sage">
                       No patients match these filters.
                     </td>
                   </tr>
                 )}
                 {data.items.map((patient) => (
-                  <tr key={patient.id} className="border-t border-brand-dark/10 hover:bg-brand-gold/5">
+                  <tr
+                    key={patient.id}
+                    onClick={() => router.push(`/patients/${patient.id}`)}
+                    className="cursor-pointer border-t border-brand-dark/10 hover:bg-brand-gold/5"
+                  >
                     <td className="p-3">{patient.first_name} {patient.last_name}</td>
                     <td className="p-3">{calculateAge(patient.date_of_birth)}</td>
                     <td className="p-3">{formatLabel(patient.gender)}</td>
-                    <td className="p-3">{formatPhone(patient.phone)}</td>
-                    <td className="p-3">{patient.email}</td>
                     <td className="p-3">
                       <span
                         className="inline-block rounded-full px-2.5 py-1 text-xs font-medium text-white"
@@ -103,7 +110,6 @@ export function PatientTable() {
                     </td>
                     <td className="p-3">{formatDate(patient.created_date)}</td>
                     <td className="p-3">{patient.appointment_count}</td>
-                    <td className="p-3">{formatDate(patient.last_appointment_date)}</td>
                     <td className="p-3 text-right">{formatCents(patient.total_spent_cents)}</td>
                   </tr>
                 ))}

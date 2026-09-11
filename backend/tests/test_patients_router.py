@@ -36,3 +36,34 @@ async def test_get_patients_endpoint_returns_list(db_session):
     # Reset overrides so this test's DB override doesn't leak into other tests
     # sharing the same `app` instance.
     app.dependency_overrides.clear()
+
+
+async def test_get_patient_endpoint_returns_detail(db_session):
+    """GET /api/patients/{id} returns the patient's profile plus their (empty) appointment history."""
+    app.dependency_overrides[get_db] = lambda: db_session
+    db_session.add(make_patient(id="pat_1"))
+    await db_session.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/patients/pat_1")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["patient"]["id"] == "pat_1"
+    assert body["appointments"] == []
+
+    app.dependency_overrides.clear()
+
+
+async def test_get_patient_endpoint_404s_for_unknown_id(db_session):
+    """GET /api/patients/{id} for a patient that doesn't exist returns 404, not 200 with empty/null data."""
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/patients/pat_does_not_exist")
+
+    assert response.status_code == 404
+
+    app.dependency_overrides.clear()

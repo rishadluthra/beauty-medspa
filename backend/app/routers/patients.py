@@ -9,12 +9,12 @@ REST layer too).
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.repositories.patients import PatientFilters, list_patients
-from app.schemas.patient import PatientListResponse
+from app.repositories.patients import PatientFilters, get_patient_detail, list_patients
+from app.schemas.patient import PatientDetailResponse, PatientListResponse
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -47,3 +47,18 @@ async def get_patients(
         age_min=age_min, age_max=age_max,
     )
     return await list_patients(db, filters, sort=sort, page=page, page_size=page_size)
+
+
+@router.get("/{patient_id}", response_model=PatientDetailResponse)
+async def get_patient(patient_id: str, db: AsyncSession = Depends(get_db)) -> PatientDetailResponse:
+    """One patient's full profile plus their complete appointment history, for the Patient Detail page.
+
+    This is the drill-down from a Patient Table row: every appointment,
+    every service performed within it (with provider and time), and its
+    payment if any — none of which the table view (or the analytics
+    aggregates) ever surfaces per-patient.
+    """
+    detail = await get_patient_detail(db, patient_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+    return detail
