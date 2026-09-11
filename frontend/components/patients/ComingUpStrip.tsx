@@ -1,13 +1,24 @@
 "use client";
 
 /**
- * "Coming Up" — a compact glance at the next few upcoming appointments
- * (soonest first, across all future days), shown below Today's
- * Appointments. Replaces the old full-page Upcoming Appointments tab: the
- * Calendar view already covers deep drill-down into any future day, so a
- * whole separate paginated tab of the same underlying data added little
- * beyond what this quick "what's coming up next" glance now covers,
- * without needing to click into a specific day first to see anything.
+ * "Coming Up Tomorrow" — a compact glance at tomorrow's soonest-first
+ * appointments, shown below Today's Appointments. Replaces the old
+ * full-page Upcoming Appointments tab: the Calendar view already covers
+ * deep drill-down into any future day, so a whole separate paginated tab
+ * of the same underlying data added little beyond what this quick glance
+ * now covers, without needing to click into a specific day first to see
+ * anything.
+ *
+ * `only_tomorrow: true` on the API call is what makes this strip's own
+ * name accurate -- without it, `list_upcoming_appointments` returns each
+ * patient's soonest upcoming appointment regardless of which future day
+ * it falls on, which can span several days out (verified live: an 8-item
+ * unrestricted preview included appointments 3 days out, not just
+ * tomorrow's). Since every item shown is now guaranteed to be the same
+ * day, only the TIME is shown per card, not the full date -- repeating
+ * an identical date on every single card would be redundant once the
+ * heading itself already says "tomorrow."
+ *
  * Renders nothing while loading, on error, or when there's nothing
  * upcoming -- this is a secondary glance, not primary content that needs
  * its own loading/error states competing with Today's Appointments above it.
@@ -17,21 +28,21 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatTime } from "@/lib/format";
 
 const PREVIEW_COUNT = 8;
 
 export function ComingUpStrip() {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patients", "upcoming", "preview"],
-    queryFn: () => api.getUpcomingAppointments({ page: 1, page_size: PREVIEW_COUNT }),
+    queryKey: ["patients", "upcoming", "tomorrow", "preview"],
+    queryFn: () => api.getUpcomingAppointments({ page: 1, page_size: PREVIEW_COUNT, only_tomorrow: true }),
   });
 
   if (isLoading || isError || !data || data.items.length === 0) return null;
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wider text-brand-bg/50">Coming Up</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-brand-bg/50">Coming Up Tomorrow</p>
       {/*
         A CSS grid (equal-width/equal-height cells) instead of the previous
         `flex flex-wrap` row -- flex-wrap sized each pill to its own content,
@@ -48,11 +59,10 @@ export function ComingUpStrip() {
           this used to -- clicking "what's coming up" is about that
           upcoming visit, matching the same appointment-first mental model
           Today's Appointments/Calendar already use. No `ctx` is passed:
-          unlike a single day's schedule, "Coming Up" spans arbitrarily
-          many different future days, so there's no single bounded window
-          for Previous/Next to walk -- those buttons simply stay disabled
-          when arriving from here, which is honest given there's no "next
-          item in this list" concept to offer.
+          this strip isn't one of the tab-level schedule windows the
+          Appointment Detail page's Previous/Next can walk, so those
+          buttons simply stay disabled when arriving from here, which is
+          honest given there's no "next item in this list" concept to offer.
         */}
         {data.items.map((item) => (
           <Link
@@ -61,7 +71,7 @@ export function ComingUpStrip() {
             className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-brand-bg/20 bg-brand-bg/5 px-3 py-2.5 text-center transition-colors hover:border-brand-gold hover:bg-brand-bg/10"
           >
             <span className="w-full truncate text-sm font-medium text-brand-bg">{item.first_name} {item.last_name}</span>
-            <span className="w-full truncate text-xs text-brand-bg/60">{formatDate(item.upcoming_appointment_date)}</span>
+            <span className="w-full truncate text-xs text-brand-bg/60">{formatTime(item.upcoming_appointment_date)}</span>
             <span className="w-full truncate text-xs text-brand-bg/50">{item.service_name} · {item.provider_name}</span>
           </Link>
         ))}

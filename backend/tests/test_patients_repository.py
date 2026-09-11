@@ -535,6 +535,34 @@ async def test_list_upcoming_appointments_reports_the_soonest_rows_own_service_a
     assert item.provider_name == "Ann Early"  # not "Bob Late"
 
 
+async def test_list_upcoming_appointments_only_tomorrow_excludes_further_out_days(db_session):
+    """`only_tomorrow=True` narrows the window to the single day right after the
+    reference "today" -- for the "Coming Up Tomorrow" strip, which needs to show ONLY
+    appointments actually happening tomorrow, not "soonest upcoming" spanning several
+    days out. Without this flag (the default), both patients still appear.
+    """
+    db_session.add_all([
+        make_patient(id="pat_tomorrow"), make_patient(id="pat_later"),
+        make_provider(), make_service(),
+        make_appointment(id="apt_tomorrow", patient_id="pat_tomorrow", status="confirmed"),
+        make_appointment(id="apt_later", patient_id="pat_later", status="confirmed"),
+        make_appointment(id="apt_sets_month", patient_id="pat_later", status="confirmed"),  # sets the latest data month
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_tomorrow", start=datetime(2026, 1, 2, 9, 0), end=datetime(2026, 1, 2, 9, 30)),
+        make_appointment_service(appointment_id="apt_later", start=datetime(2026, 1, 3, 9, 0), end=datetime(2026, 1, 3, 9, 30)),
+        make_appointment_service(appointment_id="apt_sets_month", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    tomorrow_only = await list_upcoming_appointments(db_session, only_tomorrow=True)
+    assert {item.id for item in tomorrow_only.items} == {"pat_tomorrow"}
+
+    unrestricted = await list_upcoming_appointments(db_session, only_tomorrow=False)
+    assert {item.id for item in unrestricted.items} == {"pat_tomorrow", "pat_later"}
+
+
 async def test_list_todays_appointments_one_row_per_service_excludes_cancelled_and_other_days(db_session):
     """Covers the Today's Appointments contract, anchored to reference_date = 2026-01-01
     (set by the Feb 2026 appointment below):

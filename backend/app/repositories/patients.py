@@ -630,6 +630,7 @@ async def get_calendar_month(
 
 async def list_upcoming_appointments(
     db: AsyncSession, page: int = 1, page_size: int = 25, provider_id: str | None = None,
+    only_tomorrow: bool = False,
 ) -> UpcomingAppointmentsResponse:
     """List patients by their soonest upcoming appointment, for planning ahead beyond today.
 
@@ -644,6 +645,17 @@ async def list_upcoming_appointments(
     upcoming appointment *with that provider* is shown, not their soonest
     appointment overall (which could be a different service with a
     different provider on the same multi-service appointment).
+
+    `only_tomorrow`, if set, additionally caps the window to the single day
+    right after the reference "today" -- for the front desk page's "Coming
+    Up Tomorrow" strip, which needs to show ONLY appointments actually
+    happening tomorrow (the strip's own name would otherwise be inaccurate:
+    without this, "soonest upcoming" can reach several days out, not just
+    the next day). Computed entirely server-side from the same reference
+    date every other "today"-relative view in this app uses -- deliberately
+    not exposed as a caller-supplied date, so nothing here can accidentally
+    be computed against the real wall-clock date instead of this frozen
+    dataset's own reference anchor.
 
     Ranks individual `AppointmentService` rows directly (not a per-appointment
     `MIN()` aggregate) so the exact soonest row's own service/provider can be
@@ -677,6 +689,10 @@ async def list_upcoming_appointments(
     )
     if provider_id:
         base = base.where(AppointmentService.provider_id == provider_id)
+    if only_tomorrow:
+        # `end_of_reference_day` (already the lower bound above) IS tomorrow's start --
+        # this just adds the matching upper bound to close the window to that single day.
+        base = base.where(AppointmentService.start < end_of_reference_day + timedelta(days=1))
 
     # Of each patient's upcoming (after today) services, keep only the
     # soonest one -- a patient with several upcoming bookings should appear

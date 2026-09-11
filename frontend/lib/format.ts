@@ -120,11 +120,15 @@ export function formatPhone(value: string): string {
  * the time is shown, not the date — the enclosing appointment card already
  * shows the date once for all of its services.
  */
+const TIME_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+
+/** Formats just the time portion of an ISO timestamp, e.g. "9:00 AM". */
+export function formatTime(value: string): string {
+  return new Date(value).toLocaleTimeString("en-US", TIME_FORMAT_OPTIONS);
+}
+
 export function formatTimeRange(start: string, end: string): string {
-  const timeOptions: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
-  const startLabel = new Date(start).toLocaleTimeString("en-US", timeOptions);
-  const endLabel = new Date(end).toLocaleTimeString("en-US", timeOptions);
-  return `${startLabel} – ${endLabel}`;
+  return `${formatTime(start)} – ${formatTime(end)}`;
 }
 
 /**

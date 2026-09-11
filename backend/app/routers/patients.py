@@ -94,6 +94,7 @@ async def get_upcoming_appointments(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     provider_id: str | None = None,
+    only_tomorrow: bool = False,
     db: AsyncSession = Depends(get_db),
 ) -> UpcomingAppointmentsResponse:
     """List patients by their soonest appointment after today, for planning ahead.
@@ -101,8 +102,12 @@ async def get_upcoming_appointments(
     See `list_upcoming_appointments` for what "today" (and therefore
     "after today") means against this static seed dataset. `provider_id`,
     if given, narrows this to that provider's own upcoming schedule.
+    `only_tomorrow`, if set, further narrows the window to just the single
+    day right after "today" -- see `list_upcoming_appointments` for why.
     """
-    return await list_upcoming_appointments(db, page=page, page_size=page_size, provider_id=provider_id)
+    return await list_upcoming_appointments(
+        db, page=page, page_size=page_size, provider_id=provider_id, only_tomorrow=only_tomorrow,
+    )
 
 
 @router.get("/rebooking-opportunities", response_model=RebookingOpportunitiesResponse)

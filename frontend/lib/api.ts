@@ -42,7 +42,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
  * string), and parses the JSON response as `T`. Throws if the response
  * status is not ok.
  */
-async function apiGet<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
+async function apiGet<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const url = new URL(`${API_BASE_URL}${path}`);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
@@ -87,8 +87,14 @@ export const api = {
   /** Fetches today's full schedule (the default Patients-page view). `provider_id` narrows to one provider's own schedule. */
   getTodaysAppointments: (params: { page?: number; page_size?: number; provider_id?: string }) =>
     apiGet<TodaysAppointmentsResponse>("/api/patients/today", { ...params }),
-  /** Fetches a page of the Upcoming Appointments dashboard (patients scheduled after today). `provider_id` narrows to one provider's own upcoming schedule. */
-  getUpcomingAppointments: (params: { page?: number; page_size?: number; provider_id?: string }) =>
+  /**
+   * Fetches a page of the Upcoming Appointments dashboard (patients scheduled after
+   * today). `provider_id` narrows to one provider's own upcoming schedule.
+   * `only_tomorrow`, when true, further narrows to just the single day right after
+   * today -- what the "Coming Up Tomorrow" strip uses, so its name is actually accurate
+   * (without it, "soonest upcoming" can span several days out, not just tomorrow).
+   */
+  getUpcomingAppointments: (params: { page?: number; page_size?: number; provider_id?: string; only_tomorrow?: boolean }) =>
     apiGet<UpcomingAppointmentsResponse>("/api/patients/upcoming", { ...params }),
   /** Fetches a page of the Rebooking Opportunities worklist (seen before, nothing scheduled going forward), most-recently-seen first. */
   getRebookingOpportunities: (params: { page?: number; page_size?: number }) =>
