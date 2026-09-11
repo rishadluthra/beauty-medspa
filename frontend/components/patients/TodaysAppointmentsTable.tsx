@@ -57,16 +57,29 @@ export function TodaysAppointmentsTable() {
 
       {data && (
         <>
-          <div className="hidden overflow-hidden rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10 sm:block">
-            <table className="w-full table-fixed text-sm">
+          {/*
+            No `table-fixed`/fixed-percentage columns here on purpose —
+            those forced a real phone number ("+1-883-313-9650x45293", 22
+            characters) and a time range ("10:00 AM – 10:30 AM") to
+            visibly truncate, cutting off actual digits, once the
+            container was capped at a size that didn't leave enough room
+            per column. The browser's own content-based auto-layout sizes
+            each column to what it actually needs; `whitespace-nowrap`
+            keeps that content from wrapping instead. If the table ever
+            ends up wider than a narrow viewport can show, the
+            `overflow-x-auto` wrapper below lets it scroll horizontally
+            rather than clipping or truncating anything.
+          */}
+          <div className="hidden overflow-x-auto rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10 sm:block">
+            <table className="w-full text-sm">
               <thead className="text-left text-brand-dark">
                 <tr className="border-b border-brand-gold/20">
-                  <th className="w-[16%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Time</th>
-                  <th className="w-[18%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Patient</th>
-                  <th className="w-[14%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
-                  <th className="w-[18%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Service</th>
-                  <th className="w-[18%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Provider</th>
-                  <th className="w-[16%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Status</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Time</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Patient</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Service</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Provider</th>
+                  <th className="w-full whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-dark/5 text-brand-dark">
@@ -84,12 +97,12 @@ export function TodaysAppointmentsTable() {
                     onClick={() => router.push(`/patients/${item.patient_id}`)}
                     className="cursor-pointer transition-colors hover:bg-brand-gold/5"
                   >
-                    <td className="truncate px-4 py-3.5">{formatTimeRange(item.start, item.end)}</td>
-                    <td className="truncate px-4 py-3.5">{item.patient_name}</td>
-                    <td className="truncate px-4 py-3.5">{formatPhone(item.phone)}</td>
-                    <td className="truncate px-4 py-3.5">{item.service_name}</td>
-                    <td className="truncate px-4 py-3.5">{item.provider_name}</td>
-                    <td className="px-4 py-3.5"><StatusBadge status={item.status} /></td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{formatTimeRange(item.start, item.end)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{item.patient_name}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{formatPhone(item.phone)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{item.service_name}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{item.provider_name}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5"><StatusBadge status={item.status} /></td>
                   </tr>
                 ))}
               </tbody>

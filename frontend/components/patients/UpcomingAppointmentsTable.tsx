@@ -36,15 +36,25 @@ export function UpcomingAppointmentsTable() {
 
       {data && (
         <>
-          <div className="hidden overflow-hidden rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10 sm:block">
-            <table className="w-full table-fixed text-sm">
+          {/*
+            No `table-fixed`/fixed-percentage columns — see
+            TodaysAppointmentsTable for why: a fixed-percentage column
+            sized against an assumed-typical content length can still
+            truncate a real phone number or email once the container is
+            capped below what dense columns actually need. Column widths
+            here are content-based instead, with `overflow-x-auto` on the
+            wrapper as the fallback if the table ever exceeds a narrow
+            viewport.
+          */}
+          <div className="hidden overflow-x-auto rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10 sm:block">
+            <table className="w-full text-sm">
               <thead className="text-left text-brand-dark">
                 <tr className="border-b border-brand-gold/20">
-                  <th className="w-[22%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Name</th>
-                  <th className="w-[7%] whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Age</th>
-                  <th className="w-[17%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
-                  <th className="w-[28%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Email</th>
-                  <th className="w-[26%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Upcoming Appt.</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Name</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Age</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Email</th>
+                  <th className="w-full whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Upcoming Appt.</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-dark/5 text-brand-dark">
@@ -62,11 +72,11 @@ export function UpcomingAppointmentsTable() {
                     onClick={() => router.push(`/patients/${item.id}`)}
                     className="cursor-pointer transition-colors hover:bg-brand-gold/5"
                   >
-                    <td className="truncate px-4 py-3.5">{item.first_name} {item.last_name}</td>
-                    <td className="px-4 py-3.5 text-right">{calculateAge(item.date_of_birth)}</td>
-                    <td className="truncate px-4 py-3.5">{formatPhone(item.phone)}</td>
-                    <td className="truncate px-4 py-3.5">{item.email}</td>
-                    <td className="px-4 py-3.5">{formatDateTime(item.upcoming_appointment_date)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{item.first_name} {item.last_name}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-right">{calculateAge(item.date_of_birth)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{formatPhone(item.phone)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{item.email}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{formatDateTime(item.upcoming_appointment_date)}</td>
                   </tr>
                 ))}
               </tbody>
