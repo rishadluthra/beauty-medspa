@@ -170,7 +170,7 @@ export default function PatientDetailPage() {
                 label-above-value pattern) makes it self-explanatory: this
                 is how the patient found the practice.
               */}
-              <div className="text-right">
+              <div className="text-center">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-dark/40">Source</p>
                 <div className="mt-1"><SourceBadge source={data.patient.source} /></div>
               </div>
@@ -192,9 +192,9 @@ export default function PatientDetailPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <KpiCard label="Visits" value={String(data.patient.appointment_count)} />
+            <KpiCard label="Appointments" value={String(data.patient.appointment_count)} />
             <KpiCard label="Total Spent" value={formatCents(data.patient.total_spent_cents)} />
-            <KpiCard label="Last Visit" value={formatDate(data.patient.last_appointment_date)} />
+            <KpiCard label="Last Appointment" value={formatDate(data.patient.last_appointment_date)} />
           </div>
 
           <div className="space-y-3">

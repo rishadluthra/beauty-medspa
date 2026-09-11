@@ -80,24 +80,32 @@ export function PatientTable() {
               table is inside a now width-capped page (see layout.tsx),
               that used to mean a handful of short-text columns getting
               stretched into huge, uneven gaps.
+
+              Header uses a plain bottom border + small muted uppercase
+              labels instead of a solid fill block — a lighter, less
+              "boxed-in" treatment that reads as a modern data table rather
+              than a filled banner sitting on top of the rows. Numeric
+              columns (Age, Appointments, Spent) are right-aligned, text
+              columns left-aligned, so each column's own values line up
+              the way they're actually meant to be scanned/compared.
             */}
             <table className="w-full table-fixed text-sm">
-              <thead className="bg-brand-gold/10 text-left text-brand-dark">
-                <tr>
-                  <th className="w-[26%] p-3 font-semibold">Name</th>
-                  <th className="w-[8%] p-3 font-semibold">Age</th>
-                  <th className="w-[13%] p-3 font-semibold">Gender</th>
-                  <th className="w-[17%] p-3 font-semibold">Source</th>
-                  <th className="w-[16%] p-3 font-semibold">Joined</th>
-                  <th className="w-[10%] p-3 font-semibold">Visits</th>
-                  <th className="w-[10%] p-3 text-right font-semibold">Spent</th>
+              <thead className="text-left text-brand-dark">
+                <tr className="border-b border-brand-gold/20">
+                  <th className="w-[26%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Name</th>
+                  <th className="w-[8%] whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Age</th>
+                  <th className="w-[11%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Gender</th>
+                  <th className="w-[17%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Source</th>
+                  <th className="w-[16%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Joined</th>
+                  <th className="w-[12%] whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Appointments</th>
+                  <th className="w-[10%] whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Spent</th>
                 </tr>
               </thead>
-              <tbody className="text-brand-dark">
+              <tbody className="divide-y divide-brand-dark/5 text-brand-dark">
                 {/*
                   Empty-state row. colSpan={7} must match the number of
                   <th> columns in the header above (Name, Age, Gender,
-                  Source, Joined, Visits, Spent) — if a column is ever
+                  Source, Joined, Appts, Spent) — if a column is ever
                   added/removed, update this number too or the empty-state
                   cell will misalign.
                 */}
@@ -112,15 +120,15 @@ export function PatientTable() {
                   <tr
                     key={patient.id}
                     onClick={() => router.push(`/patients/${patient.id}`)}
-                    className="cursor-pointer border-t border-brand-dark/10 hover:bg-brand-gold/5"
+                    className="cursor-pointer transition-colors hover:bg-brand-gold/5"
                   >
-                    <td className="truncate p-3">{patient.first_name} {patient.last_name}</td>
-                    <td className="p-3">{calculateAge(patient.date_of_birth)}</td>
-                    <td className="p-3">{formatLabel(patient.gender)}</td>
-                    <td className="p-3"><SourceBadge source={patient.source} size="compact" /></td>
-                    <td className="p-3">{formatDate(patient.created_date)}</td>
-                    <td className="p-3">{patient.appointment_count}</td>
-                    <td className="p-3 text-right">{formatCents(patient.total_spent_cents)}</td>
+                    <td className="truncate px-4 py-3.5">{patient.first_name} {patient.last_name}</td>
+                    <td className="px-4 py-3.5 text-right">{calculateAge(patient.date_of_birth)}</td>
+                    <td className="px-4 py-3.5">{formatLabel(patient.gender)}</td>
+                    <td className="px-4 py-3.5"><SourceBadge source={patient.source} size="compact" /></td>
+                    <td className="px-4 py-3.5">{formatDate(patient.created_date)}</td>
+                    <td className="px-4 py-3.5 text-right">{patient.appointment_count}</td>
+                    <td className="px-4 py-3.5 text-right">{formatCents(patient.total_spent_cents)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -148,7 +156,7 @@ export function PatientTable() {
                   {calculateAge(patient.date_of_birth)} · {formatLabel(patient.gender)} · Joined {formatDate(patient.created_date)}
                 </p>
                 <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-brand-dark/70">{patient.appointment_count} visits</span>
+                  <span className="text-brand-dark/70">{patient.appointment_count} appointments</span>
                   <span className="font-medium">{formatCents(patient.total_spent_cents)}</span>
                 </div>
               </div>

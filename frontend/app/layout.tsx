@@ -29,9 +29,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             fully rounded, translucent cream with a backdrop blur (frosted
             glass), and `sticky` so it stays visible while scrolling long
             pages instead of scrolling away with the content.
+
+            Deliberately narrower than the page content below it
+            (`max-w-lg` = 512px vs. `<main>`'s `max-w-5xl` = 1024px, i.e.
+            about half) — with only a wordmark and two links in it, a nav
+            pill stretched to the content's full width reads as an oddly
+            long, sparse bar sitting over a much busier table.
           */}
-          <div className="sticky top-3 z-50 px-3 lg:top-4 lg:px-8">
-            <nav className="mx-auto flex max-w-5xl items-center justify-between rounded-full border border-brand-gold/10 bg-brand-bg/80 px-6 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl">
+          <div className="sticky top-3 z-50 flex justify-center px-3 lg:top-4 lg:px-8">
+            <nav className="flex w-full max-w-lg items-center justify-between rounded-full border border-brand-gold/10 bg-brand-bg/80 px-6 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl">
               <span className="text-lg font-bold tracking-tight">Beauty Med Spa</span>
               <div className="flex gap-8">
                 <Link
@@ -50,14 +56,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </nav>
           </div>
           {/*
-            Capped at the same `max-w-5xl` as the nav above, so page
-            content lines up under it instead of stretching edge-to-edge
-            on wide monitors — without this, a table with only a handful
-            of short-text columns spreads them across the full viewport
-            width with huge, uneven gaps between them. `max-w-5xl` (not the
-            wider `7xl` this used briefly) is deliberately narrow enough
-            that the nav's own pill doesn't look oversized/sparse relative
-            to the content sitting under it.
+            Content stays at its own `max-w-5xl` — wider than the nav on
+            purpose (see above) — so a data table has room to breathe
+            without the nav trying to match it column-for-column.
           */}
           <main className="mx-auto max-w-5xl px-3 py-6 lg:px-8">{children}</main>
         </Providers>
