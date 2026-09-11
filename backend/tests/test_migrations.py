@@ -42,6 +42,6 @@ def test_migration_creates_all_expected_tables():
     assert tables == {
         "patients", "providers", "services",
         "appointments", "appointment_services", "payments",
-        "custom_reports",
+        "custom_reports", "custom_views", "graph_order",
         "alembic_version",
     }

@@ -9,6 +9,8 @@ from app.models.appointment import Appointment
 from app.models.appointment_service import AppointmentService
 from app.models.base import Base
 from app.models.custom_report import CustomReport
+from app.models.custom_view import CustomView
+from app.models.graph_order import GraphOrder
 from app.models.patient import Patient
 from app.models.payment import Payment
 from app.models.provider import Provider
@@ -23,4 +25,6 @@ __all__ = [
     "AppointmentService",
     "Payment",
     "CustomReport",
+    "CustomView",
+    "GraphOrder",
 ]

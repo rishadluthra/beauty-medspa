@@ -9,24 +9,24 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import analytics, appointments, availability, custom_reports, patients, providers, services
+from app.routers import analytics, appointments, availability, custom_reports, custom_views, patients, providers, services
 
 app = FastAPI(title="Beauty Med Spa API")
 
 # Restrict cross-origin requests to the known frontend origin(s) rather than
 # allowing "*" — still shouldn't be callable from arbitrary origins. Every
-# route is GET-only EXCEPT `app.routers.custom_reports` (the self-serve
-# "Build Custom Analytics" feature's saved-report CRUD, POST/DELETE) — the
-# spec's read-only note is scope relief on the seed *business* data, not a
-# blanket prohibition on app-level state, so POST/DELETE are widened in
-# specifically to support that one feature. `cors_origins` is a
-# comma-separated string (env var) so it can be set to just the deployed
-# Next.js frontend's URL in production while defaulting to localhost for
-# local dev.
+# route is GET-only EXCEPT `app.routers.custom_reports`/`custom_views` (the
+# self-serve analytics feature's saved-report/saved-view CRUD and reorder
+# endpoints, POST/PUT/DELETE) — the spec's read-only note is scope relief
+# on the seed *business* data, not a blanket prohibition on app-level
+# state, so these methods are widened in specifically to support that
+# feature. `cors_origins` is a comma-separated string (env var) so it can
+# be set to just the deployed Next.js frontend's URL in production while
+# defaulting to localhost for local dev.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins.split(","),
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -40,6 +40,7 @@ app.include_router(providers.router)
 app.include_router(services.router)
 app.include_router(availability.router)
 app.include_router(custom_reports.router)
+app.include_router(custom_views.router)
 
 
 @app.get("/api/health")

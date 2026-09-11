@@ -30,6 +30,7 @@ from sqlalchemy import case, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Appointment, AppointmentService, CustomReport, Patient, Payment, Provider, Service
+from app.repositories import custom_views as custom_views_repo
 from app.schemas.custom_reports import CustomReportPoint, Dimension, Metric, TimeGrain
 
 MAX_SAVED_REPORTS = 12
@@ -185,6 +186,10 @@ async def create_custom_report(
     db.add(report)
     await db.commit()
     await db.refresh(report)
+    # Every newly created graph appears at the top of the "All Graphs" tab
+    # -- see `custom_views.prepend_to_graph_order` for why this is a
+    # prepend regardless of any prior manual reordering.
+    await custom_views_repo.prepend_to_graph_order(db, f"custom:{report.id}")
     return report
 
 
@@ -195,4 +200,10 @@ async def delete_custom_report(db: AsyncSession, report_id: str) -> bool:
         return False
     await db.delete(report)
     await db.commit()
+    # Keep the "All Graphs" order from accumulating a dangling reference to
+    # a report that no longer exists. Any custom view still referencing
+    # this id is left as-is -- see `app.models.custom_view`'s docstring on
+    # why views tolerate a missing reference rather than needing to be kept
+    # in sync on every report delete.
+    await custom_views_repo.remove_from_graph_order(db, f"custom:{report_id}")
     return True
