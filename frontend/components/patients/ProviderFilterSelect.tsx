@@ -26,7 +26,14 @@ export function ProviderFilterSelect({ value, onChange }: Props) {
   return (
     <select
       aria-label="Filter by provider"
-      className={FILTER_PILL_CLASSNAME}
+      // A native <select> otherwise sizes itself to its currently selected
+      // option's text -- "Dr. Anthony Freeman" renders far wider than
+      // "Filters" does, so the two controls didn't match sitting in the
+      // same tab row even though they share `FILTER_PILL_CLASSNAME`. Fixed
+      // to the Filters button's own measured width (97-98px) instead, with
+      // `truncate` so a long provider name still fits, ellipsized, rather
+      // than stretching the control back out.
+      className={`${FILTER_PILL_CLASSNAME} max-w-[150px] truncate`}
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value || undefined)}
     >
