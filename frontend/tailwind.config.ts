@@ -30,6 +30,21 @@ const config: Config = {
           // too dark to read against the near-black background.
           coral: "#e2725b",
         },
+        // Bare top-level aliases for the two above -- a large fraction of
+        // this app's error/danger styling (patient/appointment "not
+        // found" text, table load-error messages, delete-confirm buttons,
+        // the error Toast variant) was written as `text-coral`/`bg-coral`/
+        // `border-coral`/`text-rust` without the `brand-` prefix Tailwind
+        // actually needs to generate a class from a NESTED color token.
+        // Confirmed live (not guessed): a "Delete This View" button
+        // styled with `border-coral bg-coral/20 text-coral` rendered with
+        // computed style `color: rgb(27, 33, 27)` (== brand-dark, the
+        // inherited default) and a default Tailwind gray border --
+        // every one of those classes was silently a no-op the whole
+        // session. Aliasing here fixes every existing bare usage at once
+        // instead of hunting down and rewriting each `className` string.
+        coral: "#e2725b",
+        rust: "#9a3412",
       },
     },
   },

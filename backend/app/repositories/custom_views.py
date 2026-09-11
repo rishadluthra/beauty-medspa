@@ -45,7 +45,16 @@ DEFAULT_CHART_KEYS = [
 # form, matching `"custom:<report_id>"`'s own prefix.
 DEFAULT_CHART_REFS = [f"default:{key}" for key in DEFAULT_CHART_KEYS]
 
-MAX_CUSTOM_VIEWS = 3
+# The cap exists because views are shared, unowned state (no per-user auth
+# to scope cleanup to) -- without one, tabs could accumulate indefinitely
+# with no one accountable for pruning them. 3 was the original pick but
+# proved too tight for the real use case (a manager reasonably wanting
+# more than 3 dashboards: Marketing, Provider Performance, New Patient
+# Trends, ...). Raised to 6 -- the frontend's tab bar wraps gracefully at
+# that count, and a view is just a small ordered ref list, not meaningfully
+# more expensive to store than 3 were. Must stay in sync with the
+# frontend's own `lib/customViews.ts`.
+MAX_CUSTOM_VIEWS = 6
 
 _GRAPH_ORDER_ROW_ID = "singleton"
 

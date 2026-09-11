@@ -5,8 +5,8 @@
  * required by the spec. The KPI row is fetched here (via `api.getOverview`)
  * and always shown, regardless of tab. Below it sits the tab bar: "All
  * Graphs" (every default chart + every saved custom report, badged, in a
- * persisted, manually-reorderable order) plus up to 3 saved custom views
- * (named, curated, independently-ordered subsets of the same pool of
+ * persisted, manually-reorderable order) plus up to `MAX_CUSTOM_VIEWS`
+ * saved custom views (named, curated, independently-ordered subsets of the same pool of
  * graphs) -- see `lib/chartRefs.ts` for how a "default:<key>"/
  * "custom:<report_id>" ref resolves to something renderable.
  *
@@ -33,10 +33,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AnalyticsTabBar } from "@/components/analytics/AnalyticsTabBar";
 import { BuildCustomAnalyticsModal } from "@/components/analytics/BuildCustomAnalyticsModal";
-import { CreateCustomViewModal } from "@/components/analytics/CreateCustomViewModal";
 import { CustomReportCard } from "@/components/analytics/CustomReportCard";
 import { DefaultChartSlot } from "@/components/analytics/DefaultChartSlot";
 import { EditViewModal } from "@/components/analytics/EditViewModal";
+import { GraphPickerModal } from "@/components/analytics/GraphPickerModal";
 import { KpiCard } from "@/components/analytics/KpiCard";
 import { Toast } from "@/components/analytics/Toast";
 import { api } from "@/lib/api";
@@ -184,23 +184,35 @@ export default function AnalyticsPage() {
           request, to read as more prominent than a bare secondary button
           without competing with the solid-gold primary CTA next to it.
         */}
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setBuildModalOpen(true)}
-            className="rounded-full bg-brand-gold px-4 py-1.5 text-sm font-medium text-brand-dark transition-colors hover:bg-brand-gold-dark"
-          >
-            + Create New Graph
-          </button>
-          <button
-            type="button"
-            disabled={atViewCap}
-            title={atViewCap ? `You've reached the limit of ${MAX_CUSTOM_VIEWS} custom views.` : undefined}
-            onClick={() => setCreateViewModalOpen(true)}
-            className="rounded-full border border-brand-gold/10 bg-brand-bg/50 px-4 py-1.5 text-sm font-medium text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl transition-colors hover:bg-brand-bg/70 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            + Create Custom View
-          </button>
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setBuildModalOpen(true)}
+              className="rounded-full bg-brand-gold px-4 py-1.5 text-sm font-medium text-brand-dark transition-colors hover:bg-brand-gold-dark"
+            >
+              + Create New Graph
+            </button>
+            <button
+              type="button"
+              disabled={atViewCap}
+              onClick={() => setCreateViewModalOpen(true)}
+              className="rounded-full border border-brand-gold/10 bg-brand-bg/50 px-4 py-1.5 text-sm font-medium text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl transition-colors hover:bg-brand-bg/70 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              + Create Custom View
+            </button>
+          </div>
+          {/*
+            Visible text, not just a hover-only `title` tooltip -- a
+            disabled button with no other explanation is easy to read as
+            broken rather than "at its limit," especially on touch devices
+            where a `title` attribute never shows at all.
+          */}
+          {atViewCap && (
+            <p className="text-xs text-brand-bg/60">
+              Max custom views reached ({MAX_CUSTOM_VIEWS}) -- delete a view to create a new one.
+            </p>
+          )}
         </div>
       </div>
 
@@ -213,7 +225,8 @@ export default function AnalyticsPage() {
       )}
 
       {isCreateViewModalOpen && customReports && (
-        <CreateCustomViewModal
+        <GraphPickerModal
+          mode="create"
           customReports={customReports}
           onClose={() => setCreateViewModalOpen(false)}
           onViewCreated={(view) => {
@@ -226,16 +239,19 @@ export default function AnalyticsPage() {
         />
       )}
 
-      {isEditViewOpen && (
+      {isEditViewOpen && customReports && (
         <EditViewModal
           title={activeTab === ALL_GRAPHS_TAB ? "Edit All Graphs" : `Edit View: ${activeView?.name}`}
           items={resolvedItems}
           mode={activeTab === ALL_GRAPHS_TAB ? "allGraphs" : "view"}
+          customReports={customReports}
           isSaving={editSaveMutation.isPending}
           onSave={(refs) => editSaveMutation.mutate(refs)}
           onClose={() => setEditViewOpen(false)}
           onDeleteView={() => deleteViewMutation.mutate()}
           isDeletingView={deleteViewMutation.isPending}
+          onGraphCreated={() => setToast({ message: "Custom graph created", variant: "success" })}
+          onGraphFailed={() => setToast({ message: "Failed to create custom graph", variant: "error" })}
         />
       )}
 
