@@ -144,7 +144,7 @@ class TodaysAppointmentsResponse(BaseModel):
     page: int
     page_size: int
     # The effective "today" this view was computed against -- see
-    # `_get_upcoming_reference_now` for why this isn't always the real current date.
+    # `get_reference_now` for why this isn't always the real current date.
     reference_date: date
 
 
@@ -191,7 +191,7 @@ class CalendarMonthResponse(BaseModel):
 
     month: str  # "YYYY-MM"
     days: list[CalendarDayCount]
-    # The effective "today" in this dataset (see `_get_upcoming_reference_now`) -- the
+    # The effective "today" in this dataset (see `get_reference_now`) -- the
     # frontend uses this to highlight "today" on the grid, since the real calendar date
     # means nothing against this frozen seed dataset.
     reference_date: date

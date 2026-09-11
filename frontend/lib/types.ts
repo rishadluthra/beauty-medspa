@@ -222,6 +222,38 @@ export interface CalendarMonthResponse {
   reference_date: string;
 }
 
+/** One service, as returned by `GET /api/services`. */
+export interface ServiceListItem {
+  id: string;
+  name: string;
+  duration: number; // minutes
+  price_cents: number;
+}
+
+/** Response for `GET /api/services`: every service, sorted by name. */
+export interface ServiceListResponse {
+  items: ServiceListItem[];
+}
+
+/** One provider's availability for the requested service at the requested moment. */
+export interface ProviderAvailability {
+  provider_id: string;
+  provider_name: string;
+  available: boolean;
+  /** Only set when `available` is false — when this provider is next free. */
+  busy_until: string | null;
+}
+
+/** Response for `GET /api/availability`: the walk-in availability check's result. */
+export interface AvailabilityResponse {
+  service_id: string;
+  service_name: string;
+  service_duration_minutes: number;
+  /** The moment this was checked against. */
+  at: string;
+  providers: ProviderAvailability[];
+}
+
 /** One provider, as returned by `GET /api/providers`. */
 export interface ProviderListItem {
   id: string;

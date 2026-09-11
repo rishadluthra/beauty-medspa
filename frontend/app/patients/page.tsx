@@ -12,13 +12,17 @@
  *   not the immediate day-of schedule.
  * - "Calendar": a month-at-a-glance density grid, for spotting a heavy day
  *   before drilling into it, rather than paging through days one at a time.
+ * - "Walk-In Availability": pick a service and a moment, see which
+ *   providers are free to take a walk-in right now (and when the busy ones
+ *   free up) -- a different question from the other tabs, which are all
+ *   about *existing* appointments rather than open capacity.
  * - "All Patients": the full searchable/filterable/sortable roster (what
  *   this page used to be exclusively).
  *
  * These are different enough in shape and purpose (today's schedule vs.
- * future bookings vs. a month overview vs. the entire patient base) that
- * combining them into one table with a filter would have made none of them
- * fast to scan.
+ * future bookings vs. a month overview vs. open capacity vs. the entire
+ * patient base) that combining them into one table with a filter would
+ * have made none of them fast to scan.
  */
 
 import { useState } from "react";
@@ -27,11 +31,13 @@ import { CalendarView } from "@/components/patients/CalendarView";
 import { PatientTable } from "@/components/patients/PatientTable";
 import { TodaysAppointmentsTable } from "@/components/patients/TodaysAppointmentsTable";
 import { UpcomingAppointmentsTable } from "@/components/patients/UpcomingAppointmentsTable";
+import { WalkInAvailability } from "@/components/patients/WalkInAvailability";
 
 const TABS = [
   { key: "today", label: "Today's Appointments" },
   { key: "upcoming", label: "Upcoming Appointments" },
   { key: "calendar", label: "Calendar" },
+  { key: "walkin", label: "Walk-In Availability" },
   { key: "all", label: "All Patients" },
 ] as const;
 
@@ -66,6 +72,7 @@ export default function PatientsPage() {
       {tab === "today" && <TodaysAppointmentsTable />}
       {tab === "upcoming" && <UpcomingAppointmentsTable />}
       {tab === "calendar" && <CalendarView />}
+      {tab === "walkin" && <WalkInAvailability />}
       {tab === "all" && <PatientTable />}
     </div>
   );

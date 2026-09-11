@@ -11,6 +11,7 @@
 
 import type {
   AppointmentStatusItem,
+  AvailabilityResponse,
   CalendarMonthResponse,
   DemographicsResponse,
   OverviewStats,
@@ -20,6 +21,7 @@ import type {
   ProviderListResponse,
   ProviderUtilizationItem,
   RevenuePoint,
+  ServiceListResponse,
   SourceBreakdownItem,
   TodaysAppointmentsResponse,
   TopServiceItem,
@@ -91,6 +93,11 @@ export const api = {
   /** Fetches the full schedule for one specific day, for the Calendar view's day drill-down. */
   getDaySchedule: (params: { date: string; page?: number; page_size?: number; provider_id?: string }) =>
     apiGet<TodaysAppointmentsResponse>("/api/patients/day", { ...params }),
+  /** Fetches every service, for populating the walk-in availability checker's service picker. */
+  getServices: () => apiGet<ServiceListResponse>("/api/services"),
+  /** Checks every provider's availability for a service at a moment (`at` defaults to "right now" against this dataset). */
+  getAvailability: (params: { service_id: string; at?: string }) =>
+    apiGet<AvailabilityResponse>("/api/availability", { ...params }),
   /**
    * Fetches one patient's full profile plus their complete appointment
    * history, for the Patient Detail page. Resolves to `null` (rather than

@@ -344,7 +344,7 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
     )
 
 
-async def _get_upcoming_reference_now(db: AsyncSession) -> datetime:
+async def get_reference_now(db: AsyncSession) -> datetime:
     """The effective "today" for the Upcoming Appointments view.
 
     This seed dataset is a frozen snapshot: its latest scheduled
@@ -432,7 +432,7 @@ async def list_todays_appointments(
     db: AsyncSession, page: int = 1, page_size: int = 100, provider_id: str | None = None,
 ) -> TodaysAppointmentsResponse:
     """List every scheduled service occurring on the reference "today", for the front desk's
-    at-a-glance daily schedule -- see `_get_upcoming_reference_now` for what "today" means
+    at-a-glance daily schedule -- see `get_reference_now` for what "today" means
     against this seed dataset.
 
     One row per `AppointmentService` (not per `Appointment`): a multi-service appointment
@@ -446,7 +446,7 @@ async def list_todays_appointments(
     performing today -- e.g. "what does Dr. Smith have today" -- rather than the whole
     clinic's schedule.
     """
-    reference_now = await _get_upcoming_reference_now(db)
+    reference_now = await get_reference_now(db)
     reference_date = reference_now.date()
     end_of_day = reference_now + timedelta(days=1)
     return await _list_schedule_between(db, reference_now, end_of_day, reference_date, page, page_size, provider_id)
@@ -477,10 +477,10 @@ async def get_calendar_month(
     scheduled services, so the frontend can render a complete grid without inferring gaps.
 
     `year`/`month` default to the reference "today"'s own month (see
-    `_get_upcoming_reference_now`) when omitted, so the calendar opens on the month that
+    `get_reference_now`) when omitted, so the calendar opens on the month that
     actually has data against this static seed dataset, not the real current month.
     """
-    reference_now = await _get_upcoming_reference_now(db)
+    reference_now = await get_reference_now(db)
     if year is None or month is None:
         year, month = reference_now.year, reference_now.month
 
@@ -515,7 +515,7 @@ async def list_upcoming_appointments(
     """List patients by their soonest upcoming appointment, for planning ahead beyond today.
 
     One row per patient (their single *soonest* non-cancelled appointment
-    strictly AFTER the reference "today" -- see `_get_upcoming_reference_now`),
+    strictly AFTER the reference "today" -- see `get_reference_now`),
     sorted soonest-first. Today itself is deliberately excluded here -- it's
     covered by `list_todays_appointments` instead, so the two views don't
     show overlapping appointments.
@@ -526,11 +526,11 @@ async def list_upcoming_appointments(
     appointment overall (which could be a different service with a
     different provider on the same multi-service appointment).
     """
-    # `_get_upcoming_reference_now` returns a `date_trunc('month', ...)`
+    # `get_reference_now` returns a `date_trunc('month', ...)`
     # result, which Postgres always normalizes to midnight on day 1 of that
     # month -- already exactly the start of the reference day, no separate
     # "start of day" step needed here.
-    reference_now = await _get_upcoming_reference_now(db)
+    reference_now = await get_reference_now(db)
     reference_date = reference_now.date()
     end_of_reference_day = reference_now + timedelta(days=1)
 
