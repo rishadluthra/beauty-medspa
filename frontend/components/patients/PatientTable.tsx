@@ -5,22 +5,32 @@
  * over the full patient list (~4,000 rows). All of that work happens on the
  * server — this component never fetches the whole dataset. It depends on
  * GET /patients (via `api.getPatients`) and renders whatever page of
- * results comes back, plus the `PatientFilters` toolbar that drives it.
+ * results comes back.
+ *
+ * The `PatientFilters` toolbar that drives `filters` is NOT rendered here
+ * -- it's owned and rendered by the parent (`PatientsPage`), anchored in
+ * the same row as the tab selector, rather than in its own row below the
+ * tabs (which used to push the whole table down an extra row). This
+ * component is a fully controlled component with respect to filtering:
+ * `filters`/`onFiltersChange` come in as props, the same shape
+ * `PatientFilters` itself expects, so the parent can wire the two
+ * together directly.
  */
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, type PatientQueryParams } from "@/lib/api";
 import { calculateAge, formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
-import { PatientFilters } from "./PatientFilters";
 import { SourceBadge } from "./SourceBadge";
 
-const PAGE_SIZE = 25;
+interface Props {
+  filters: PatientQueryParams;
+  onFiltersChange: (next: Partial<PatientQueryParams>) => void;
+}
 
 /**
- * Renders the patient list as a server-paginated table with filters.
+ * Renders the patient list as a server-paginated table.
  *
  * Important: this is fully server-side pagination/filtering/sorting, not a
  * client-side slice of a bulk-fetched array. `filters` is the single source
@@ -29,9 +39,8 @@ const PAGE_SIZE = 25;
  * page number) is treated as a new query and triggers a fresh API call.
  * The full ~4,000-patient set is never loaded into the browser at once.
  */
-export function PatientTable() {
+export function PatientTable({ filters, onFiltersChange }: Props) {
   const router = useRouter();
-  const [filters, setFilters] = useState<PatientQueryParams>({ page: 1, page_size: PAGE_SIZE, sort: "name" });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["patients", filters],
@@ -40,17 +49,6 @@ export function PatientTable() {
 
   return (
     <div className="space-y-4">
-      {/*
-        Any filter/search/sort change resets page back to 1 (see the
-        `page: 1` merged in below). Without this, narrowing a filter could
-        leave the user "stuck" on e.g. page 5 when the new filter only
-        produces 2 pages of results, showing an empty page instead of the
-        top of the new result set.
-      */}
-      <div className="flex justify-end">
-        <PatientFilters filters={filters} onChange={(next) => setFilters({ ...filters, ...next, page: 1 })} />
-      </div>
-
       {isLoading && <p className="text-brand-bg/70">Loading patients…</p>}
       {isError && <p className="text-coral">Could not load patients. Please try again.</p>}
 
@@ -165,14 +163,14 @@ export function PatientTable() {
               <button
                 className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
                 disabled={data.page <= 1}
-                onClick={() => setFilters({ ...filters, page: data.page - 1 })}
+                onClick={() => onFiltersChange({ page: data.page - 1 })}
               >
                 Previous
               </button>
               <button
                 className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
                 disabled={data.page * data.page_size >= data.total}
-                onClick={() => setFilters({ ...filters, page: data.page + 1 })}
+                onClick={() => onFiltersChange({ page: data.page + 1 })}
               >
                 Next
               </button>

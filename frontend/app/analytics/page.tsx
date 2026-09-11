@@ -11,20 +11,27 @@
  * query or fetch error doesn't block or break the others — each section of
  * the dashboard loads and fails independently.
  *
- * There used to be a Payment Status pie chart here too. Removed: this
- * dataset's `Payment.status` is 100% "paid" (zero failed/pending, verified
- * directly against the data), so the chart could only ever render as one
- * single-color full circle -- it carried no information a reader could act
- * on. The backend endpoint (`GET /api/analytics/payment-status`) and its
- * repository function are left in place; only the frontend chart (and its
- * now-unused `api.getPaymentStatus` client method) were removed, since a
- * live, tested, reusable query is still useful for a future AI/NL-query
- * consumer even without a current chart on top of it.
+ * Three things that used to be here were removed, not just visually
+ * demoted:
+ *  - The "New Patients (30d)" KPI always read 0 -- it compared patient
+ *    creation dates against the real `datetime.utcnow()`, but every other
+ *    "today"-relative view in this app is anchored to the dataset's own
+ *    reference date instead (see the backend's `get_reference_now`), since
+ *    this is a frozen seed dataset far behind the real current date. This
+ *    one never got that treatment. Removed outright, along with its
+ *    backend field, rather than patched, since nothing else depended on it.
+ *  - The Payment Status pie chart: `Payment.status` in this dataset is
+ *    100% "paid" (verified live), so it could only ever render as one
+ *    single-color circle.
+ *  - The Appointment Status pie chart, per direct request.
+ *  For both charts, the backend endpoint/repository function was left in
+ *  place (only the dead frontend chart + its now-unused API client method
+ *  were removed) -- still a live, tested, reusable query worth keeping for
+ *  a future AI/NL-query consumer even with no chart currently on top of it.
  */
 
 import { useQuery } from "@tanstack/react-query";
 
-import { AppointmentStatusChart } from "@/components/analytics/AppointmentStatusChart";
 import { DemographicsChart } from "@/components/analytics/DemographicsChart";
 import { KpiCard } from "@/components/analytics/KpiCard";
 import { ProviderUtilizationChart } from "@/components/analytics/ProviderUtilizationChart";
@@ -52,12 +59,13 @@ export default function AnalyticsPage() {
       {isError && <p className="text-coral">Could not load analytics overview.</p>}
 
       {overview && (
-        // Single column on mobile (not 2) — a 2-up grid on a narrow phone
-        // leaves too little width for a long formatted-currency value
-        // (e.g. a six-figure Total Revenue) to fit without overflowing.
-        // `lg:grid-cols-4` (not 6) gives the same breathing room on
-        // larger screens now that there are 7 KPIs.
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        // `md:grid-cols-3` (no further lg override) gives two clean, even
+        // rows of 3 for these 6 KPIs from medium screens up through large
+        // ones, rather than an uneven 4-then-2 split. Single column on
+        // mobile (not 2) -- a 2-up grid on a narrow phone leaves too
+        // little width for a long formatted-currency value (e.g. a
+        // six-figure Total Revenue) to fit without overflowing.
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
           <KpiCard label="Total Patients" value={overview.total_patients.toLocaleString()} />
           {/*
             Retention: of patients who've come in at least once, what
@@ -70,7 +78,6 @@ export default function AnalyticsPage() {
           <KpiCard label="Total Revenue" value={formatCents(overview.total_revenue_cents)} />
           <KpiCard label="Total Appointments" value={overview.total_appointments.toLocaleString()} />
           <KpiCard label="Avg. Transaction" value={formatCents(overview.avg_transaction_cents)} />
-          <KpiCard label="New Patients (30d)" value={overview.new_patients_last_30_days.toLocaleString()} />
           <KpiCard label="Cancellation Rate" value={`${(overview.cancellation_rate * 100).toFixed(1)}%`} />
         </div>
       )}
@@ -80,21 +87,26 @@ export default function AnalyticsPage() {
         <SourceBreakdownChart />
       </div>
 
+      {/*
+        Paired by similar shape/height (both horizontal bar charts whose
+        height scales with the same ~10-provider/~10-service row count),
+        not by topic -- a tall chart next to a short one would leave one
+        side of the row with a lot of empty space underneath it.
+      */}
       <div className="grid gap-4 md:grid-cols-2">
         <TopServicesChart />
         <ProviderUtilizationChart />
       </div>
 
       {/*
-        Paired together (rather than each sitting alone in its own
-        `md:grid-cols-2` row) once Payment Status was removed -- see below
-        -- so neither chart leaves an awkward empty half-row on wider
-        screens.
+        Full width rather than sharing a `md:grid-cols-2` row -- with
+        Appointment Status removed, this was left as the one odd chart out
+        with no natural same-height partner; giving it the full row width
+        instead of leaving an empty, unpaired half-row also means its own
+        (potentially long) service-name labels and dollar-amount bars have
+        more room to breathe.
       */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <TopServicesRevenueChart />
-        <AppointmentStatusChart />
-      </div>
+      <TopServicesRevenueChart />
 
       <DemographicsChart />
     </div>

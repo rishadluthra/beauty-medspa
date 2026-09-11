@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
-import { estimateAxisWidth } from "@/lib/chartAxis";
+import { estimateAxisWidth, LEFT_ALIGNED_CATEGORY_TICK } from "@/lib/chartAxis";
 import { BRAND } from "@/lib/chartColors";
 
 /**
@@ -75,8 +75,14 @@ export function TopServicesRevenueChart() {
             `interval={0}` forces EVERY category tick to render -- Recharts'
             default tick interval was silently skipping every other service
             name once there were enough of them to risk overlapping.
+
+            `tick={LEFT_ALIGNED_CATEGORY_TICK}` left-aligns every label to
+            a shared left edge instead of Recharts' default right-aligned
+            (ragged-left) placement -- see the constant's own doc comment
+            for why that default was also the actual cause of the "RF Skin
+            Tightening" clipping in production.
           */}
-          <YAxis type="category" dataKey="service_name" width={yAxisWidth} tickMargin={8} interval={0} />
+          <YAxis type="category" dataKey="service_name" width={yAxisWidth} interval={0} tick={LEFT_ALIGNED_CATEGORY_TICK} />
           <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
           <Bar dataKey="revenue" name="Revenue" fill={BRAND.navyTeal} />
         </BarChart>

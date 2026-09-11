@@ -39,7 +39,6 @@ export interface OverviewStats {
   total_revenue_cents: number;
   total_appointments: number;
   avg_transaction_cents: number;
-  new_patients_last_30_days: number;
   cancellation_rate: number;
   /** Of patients with at least one non-cancelled appointment, the fraction with two or more. 0.0-1.0. */
   repeat_patient_rate: number;
@@ -71,12 +70,6 @@ export interface ProviderUtilizationItem {
   provider_name: string;
   appointment_count: number;
   revenue_cents: number;
-}
-
-/** Count of appointments in a given status (pending/confirmed/cancelled). */
-export interface AppointmentStatusItem {
-  status: string;
-  count: number;
 }
 
 /** Patient count for a single gender value, used in the demographics chart. */

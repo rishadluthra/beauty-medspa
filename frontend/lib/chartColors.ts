@@ -29,32 +29,13 @@ export const CATEGORICAL_PALETTE = [
 ];
 
 /**
- * Shared status-color convention used by both status charts (appointment
- * status, payment status): a "settled/positive" state (confirmed/paid) in
- * sage, an "in-progress" state (pending) in gold, and a "needs attention"
- * state (cancelled/failed) in a muted rust — kept intentionally muted
- * rather than a harsh bright red, to stay within the site's warm, calm
- * palette while still reading as distinct from the positive/neutral colors.
- */
-export const STATUS_COLORS: Record<string, string> = {
-  confirmed: BRAND.sage,
-  paid: BRAND.sage,
-  pending: BRAND.gold,
-  cancelled: BRAND.rust,
-  failed: BRAND.rust,
-};
-
-/**
  * Appointment status and payment status are two *different* fields that
- * happen to share a "good/in-progress/bad" shape, so `STATUS_COLORS` gives
- * them the same colors (confirmed == paid == sage). That's fine when only
- * one of the two is on screen at a time (each analytics chart shows only
- * one), but on the Patient Detail page both appear side by side on the
- * same appointment card — an identically-colored "Confirmed" appointment
- * badge next to a "Paid" payment badge reads as one repeated fact instead
- * of two distinct ones. These two maps exist specifically for that
- * side-by-side case, using entirely different hue families so the two
- * fields are visually distinguishable independent of their text labels.
+ * happen to share a "good/in-progress/bad" shape. Both appear side by side
+ * on the same appointment card on the Patient Detail page — an
+ * identically-colored "Confirmed" appointment badge next to a "Paid"
+ * payment badge would read as one repeated fact instead of two distinct
+ * ones. These two maps use entirely different hue families so the two
+ * fields stay visually distinguishable independent of their text labels.
  */
 export const APPOINTMENT_STATUS_COLORS: Record<string, string> = {
   pending: BRAND.gold,

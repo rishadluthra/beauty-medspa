@@ -10,6 +10,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { BrandMark } from "@/components/BrandMark";
 import { GlobalPatientSearch } from "@/components/GlobalPatientSearch";
 
 import { Providers } from "./providers";
@@ -32,15 +33,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             glass), and `sticky` so it stays visible while scrolling long
             pages instead of scrolling away with the content.
 
-            Deliberately narrower than the page content below it
-            (`max-w-lg`/`2xl:max-w-xl` vs. `<main>`'s `max-w-5xl`/`2xl:max-w-7xl`,
-            roughly half either way) — with only a wordmark and two links in
-            it, a nav pill stretched to the content's full width reads as an
-            oddly long, sparse bar sitting over a much busier table.
+            Sized `max-w-xl`/`2xl:max-w-2xl` -- a step up from the earlier
+            `max-w-lg`/`2xl:max-w-xl` now that the nav holds a real search
+            control (not just a wordmark and two links), so it needs a bit
+            more room without crowding.
+
+            `bg-brand-bg/50` (not the earlier `/80`) is what actually makes
+            this read as translucent frosted glass rather than a solid
+            cream bar -- at 80% opacity the cream so thoroughly dominated
+            the blurred dark page content behind it that the "glass" effect
+            was effectively invisible; halving it lets that backdrop
+            genuinely show through.
           */}
           <div className="sticky top-3 z-50 flex justify-center px-3 lg:top-4 lg:px-8">
-            <nav className="flex w-full max-w-lg items-center justify-between rounded-full border border-brand-gold/10 bg-brand-bg/80 px-6 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl 2xl:max-w-xl">
-              <span className="text-lg font-bold tracking-tight">Beauty Med Spa</span>
+            <nav className="flex w-full max-w-xl items-center justify-between rounded-full border border-brand-gold/10 bg-brand-bg/50 px-6 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl 2xl:max-w-2xl">
+              <span className="flex items-center gap-2 text-lg font-bold tracking-tight">
+                <BrandMark />
+                Beauty Med Spa
+              </span>
               <div className="flex items-center gap-4">
                 <GlobalPatientSearch />
                 <div className="flex gap-8">

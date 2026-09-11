@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
-import { estimateAxisWidth } from "@/lib/chartAxis";
+import { estimateAxisWidth, LEFT_ALIGNED_CATEGORY_TICK } from "@/lib/chartAxis";
 import { BRAND } from "@/lib/chartColors";
 
 /** Fetches and renders provider appointment counts as a horizontal bar chart. */
@@ -51,8 +51,14 @@ export function ProviderUtilizationChart() {
             overlap given the available height -- with enough providers,
             that was hiding every other name entirely rather than just
             crowding them, which is worse than crowding.
+
+            `tick={LEFT_ALIGNED_CATEGORY_TICK}` left-aligns every label to
+            a shared left edge instead of Recharts' default right-aligned
+            (ragged-left) placement -- see the constant's own doc comment
+            for why that default was also the actual cause of "Anthony
+            Freeman" clipping to "nthony Freeman" in production.
           */}
-          <YAxis type="category" dataKey="provider_name" width={yAxisWidth} tickMargin={8} interval={0} />
+          <YAxis type="category" dataKey="provider_name" width={yAxisWidth} interval={0} tick={LEFT_ALIGNED_CATEGORY_TICK} />
           <Tooltip />
           <Bar dataKey="appointment_count" name="Appointments" fill={BRAND.sage} />
         </BarChart>

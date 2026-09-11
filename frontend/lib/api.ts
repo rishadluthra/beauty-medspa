@@ -10,7 +10,6 @@
  */
 
 import type {
-  AppointmentStatusItem,
   AvailabilityResponse,
   CalendarMonthResponse,
   DemographicsResponse,
@@ -123,8 +122,6 @@ export const api = {
   getTopServices: () => apiGet<TopServiceItem[]>("/api/analytics/top-services"),
   /** Fetches appointment/revenue totals per provider, for the provider-utilization chart. */
   getProviderUtilization: () => apiGet<ProviderUtilizationItem[]>("/api/analytics/provider-utilization"),
-  /** Fetches appointment counts grouped by status, for the appointment-status chart. */
-  getAppointmentStatus: () => apiGet<AppointmentStatusItem[]>("/api/analytics/appointment-status"),
   /** Fetches gender and age-bucket breakdowns, for the demographics chart. */
   getDemographics: () => apiGet<DemographicsResponse>("/api/analytics/demographics"),
 };

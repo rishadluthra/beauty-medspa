@@ -15,7 +15,33 @@
  * labels instead makes this correct by construction and automatically
  * right-sized if the underlying data changes.
  */
-export function estimateAxisWidth(labels: string[], charWidthPx = 7.5, paddingPx = 24): number {
+export function estimateAxisWidth(labels: string[], charWidthPx = 8, paddingPx = 28): number {
   const longest = labels.reduce((max, label) => Math.max(max, label.length), 0);
   return Math.round(longest * charWidthPx + paddingPx);
 }
+
+/**
+ * Left-aligns a horizontal bar chart's category `<YAxis>` tick labels,
+ * instead of Recharts' default: for a left-side axis, Recharts
+ * right-aligns tick text (`textAnchor="end"`), anchored at a fixed point
+ * near the axis line, with the text extending LEFTWARD from there. That
+ * produces a ragged left edge (each label starts wherever its own length
+ * happens to put it) and, worse, means an underestimated axis `width`
+ * clips label text off the LEFT side of the chart entirely (it renders at
+ * a negative x position, off-canvas) -- confirmed live: "Anthony Freeman"
+ * rendered as "nthony Freeman" in production even after `estimateAxisWidth`
+ * sized the axis from the real data.
+ *
+ * Passed as `<YAxis tick={LEFT_ALIGNED_CATEGORY_TICK}>`. Recharts merges a
+ * plain-object `tick` prop directly onto the rendered tick `<text>`
+ * element (confirmed by reading Recharts' own CartesianAxis source, not
+ * guessed) -- `x: 4` overrides the per-tick computed x-coordinate with one
+ * fixed small left inset for every label, and `textAnchor: "start"` makes
+ * each label grow RIGHTWARD from that shared point instead of leftward
+ * from the axis line. Every label now shares one common left edge (the
+ * actual "left-aligned" look), and even a label wider than the reserved
+ * axis width can only ever overlap rightward into the plot area -- a much
+ * smaller, still-fully-visible cosmetic issue, never an invisible,
+ * off-canvas clip again.
+ */
+export const LEFT_ALIGNED_CATEGORY_TICK = { textAnchor: "start" as const, x: 4 };

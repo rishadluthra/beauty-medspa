@@ -29,8 +29,6 @@ the parent table. That keeps each aggregate correct regardless of how many
 rows exist in the other child table.
 """
 
-from datetime import datetime, timedelta
-
 from sqlalchemy import case, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,6 +53,16 @@ async def get_overview_stats(db: AsyncSession) -> OverviewStats:
     many booking records exist"), a retention metric asking "did this
     patient come back" shouldn't count a cancelled booking as evidence
     they did.
+
+    There used to be a `new_patients_last_30_days` field here, computed
+    against `datetime.utcnow()`. Removed: like every other "today"-relative
+    view in this app, it needed to be anchored to the dataset's own
+    reference date (see `app.repositories.patients.get_reference_now`) to
+    mean anything against this frozen seed dataset -- but unlike those, it
+    never got that treatment, so it silently always returned 0 (this
+    dataset's most recent patient records predate the real current date by
+    many months). Reported as a dead KPI and removed rather than patched,
+    since nothing in the UI depended on a correct value existing.
     """
     total_patients = (await db.execute(select(func.count(Patient.id)))).scalar_one()
 
@@ -64,11 +72,6 @@ async def get_overview_stats(db: AsyncSession) -> OverviewStats:
     avg_transaction = int(total_revenue / paid_count) if paid_count else 0
 
     total_appointments = (await db.execute(select(func.count(Appointment.id)))).scalar_one()
-
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-    new_patients = (await db.execute(
-        select(func.count(Patient.id)).where(Patient.created_date >= thirty_days_ago)
-    )).scalar_one()
 
     cancelled_count = (await db.execute(
         select(func.count(Appointment.id)).where(Appointment.status == "cancelled")
@@ -95,7 +98,6 @@ async def get_overview_stats(db: AsyncSession) -> OverviewStats:
         total_revenue_cents=int(total_revenue),
         total_appointments=total_appointments,
         avg_transaction_cents=avg_transaction,
-        new_patients_last_30_days=new_patients,
         cancellation_rate=round(cancellation_rate, 4),
         repeat_patient_rate=round(repeat_patient_rate, 4),
     )
