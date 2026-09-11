@@ -37,8 +37,22 @@ const TIME_GRAIN_OPTIONS: { value: CustomReportTimeGrain; label: string }[] = [
   { value: "quarter", label: "Quarter" },
 ];
 
+/** A field label with a small, subtle marker showing the field is required to submit. */
+function FieldLabel({ children }: { children: string }) {
+  return (
+    <span className="text-sm font-medium text-brand-dark/80">
+      {children}
+      <span className="ml-0.5 text-brand-gold-dark" aria-hidden="true">*</span>
+    </span>
+  );
+}
+
 interface Props {
   onClose: () => void;
+  /** Called (in addition to closing) once the report is successfully saved, so the page can show a confirmation. */
+  onCreated: () => void;
+  /** Called when the save fails, so the page can show a confirmation alongside the inline error below. */
+  onFailed: () => void;
 }
 
 /**
@@ -46,7 +60,7 @@ interface Props {
  * `BuildCustomAnalyticsButton` only while open, so this component's state
  * always starts fresh -- no reset-on-close logic needed.
  */
-export function BuildCustomAnalyticsModal({ onClose }: Props) {
+export function BuildCustomAnalyticsModal({ onClose, onCreated, onFailed }: Props) {
   const [title, setTitle] = useState("");
   const [metric, setMetric] = useState<CustomReportMetric>("revenue_cents");
   const [dimension, setDimension] = useState<CustomReportDimension>("provider");
@@ -57,8 +71,10 @@ export function BuildCustomAnalyticsModal({ onClose }: Props) {
     mutationFn: () => api.createCustomReport({ title: title.trim(), metric, dimension, time_grain: timeGrain }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["custom-reports"] });
+      onCreated();
       onClose();
     },
+    onError: () => onFailed(),
   });
 
   return (
@@ -80,7 +96,7 @@ export function BuildCustomAnalyticsModal({ onClose }: Props) {
           }}
         >
           <label className="block">
-            <span className="text-sm font-medium text-brand-dark/80">Title</span>
+            <FieldLabel>Title</FieldLabel>
             <input
               type="text"
               required
@@ -93,7 +109,7 @@ export function BuildCustomAnalyticsModal({ onClose }: Props) {
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-brand-dark/80">Metric</span>
+            <FieldLabel>Metric</FieldLabel>
             <select
               value={metric}
               onChange={(e) => setMetric(e.target.value as CustomReportMetric)}
@@ -106,7 +122,7 @@ export function BuildCustomAnalyticsModal({ onClose }: Props) {
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-brand-dark/80">Broken down by</span>
+            <FieldLabel>Broken down by</FieldLabel>
             <select
               value={dimension}
               onChange={(e) => setDimension(e.target.value as CustomReportDimension)}
@@ -119,7 +135,7 @@ export function BuildCustomAnalyticsModal({ onClose }: Props) {
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-brand-dark/80">Time grain</span>
+            <FieldLabel>Time grain</FieldLabel>
             <select
               value={timeGrain}
               onChange={(e) => setTimeGrain(e.target.value as CustomReportTimeGrain)}

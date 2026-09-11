@@ -44,7 +44,7 @@ export function DemographicsChart() {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
-        <h2 className="mb-4 text-center font-medium text-brand-dark">Patients by Gender</h2>
+        <h2 className="mb-4 font-medium text-brand-dark">Patients by Gender</h2>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={genderData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -56,7 +56,7 @@ export function DemographicsChart() {
         </ResponsiveContainer>
       </div>
       <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
-        <h2 className="mb-4 text-center font-medium text-brand-dark">Patients by Age Group</h2>
+        <h2 className="mb-4 font-medium text-brand-dark">Patients by Age Group</h2>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={data.age_buckets} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />

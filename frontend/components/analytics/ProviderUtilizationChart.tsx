@@ -34,7 +34,7 @@ export function ProviderUtilizationChart() {
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
-      <h2 className="mb-4 text-center font-medium text-brand-dark">Provider Utilization</h2>
+      <h2 className="mb-4 font-medium text-brand-dark">Provider Utilization</h2>
       <ResponsiveContainer width="100%" height={height}>
         {/*
           No extra `margin.left` here -- `YAxis width={yAxisWidth}` already

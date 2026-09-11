@@ -7,6 +7,12 @@
  * dimension_value) cell) -- one Line per distinct `dimension_value` (e.g.
  * one line per provider), x-axis = period.
  *
+ * No subtitle line under the title -- an earlier version repeated the
+ * metric/dimension/time-grain as grey text under the user's own chosen
+ * title, which was redundant (per direct feedback: "I don't get the point
+ * of allowing someone to name the graph and then also having a grey text
+ * below it saying what the graph is").
+ *
  * Delete is a two-click confirm (not a bare single click, and not a
  * browser-native `confirm()` that would clash with the app's own modal
  * styling) -- deleting a saved report has no undo, but this app has no
@@ -21,22 +27,28 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { api } from "@/lib/api";
 import { estimateAxisWidth } from "@/lib/chartAxis";
 import { CATEGORICAL_PALETTE } from "@/lib/chartColors";
+import { formatLabel } from "@/lib/format";
 import type { CustomReport } from "@/lib/types";
-
-const METRIC_LABELS: Record<CustomReport["metric"], string> = {
-  appointment_count: "Appointments",
-  revenue_cents: "Revenue",
-  unique_patient_count: "Unique Patients",
-};
 
 /** Pivots a report's flat point list into one row per period, with one column per dimension value. */
 function pivot(report: CustomReport): { rows: Record<string, string | number>[]; seriesNames: string[] } {
-  const periods = Array.from(new Set(report.data.map((p) => p.period))).sort();
-  const seriesNames = Array.from(new Set(report.data.map((p) => p.dimension_value))).sort();
+  // `source` dimension values come straight from the backend's raw
+  // `Patient.source` enum ("in_person", not "In Person") -- provider/service
+  // dimension values are already human names (joined server-side against
+  // Provider.name/Service.name), so only `source` needs this. `formatLabel`
+  // is the same "in_person" -> "In Person" helper the rest of the Analytics
+  // page already uses (SourceBreakdownChart, DemographicsChart) for the
+  // exact same raw-enum-value problem.
+  const points = report.dimension === "source"
+    ? report.data.map((p) => ({ ...p, dimension_value: formatLabel(p.dimension_value) }))
+    : report.data;
+
+  const periods = Array.from(new Set(points.map((p) => p.period))).sort();
+  const seriesNames = Array.from(new Set(points.map((p) => p.dimension_value))).sort();
 
   const rows = periods.map((period) => {
     const row: Record<string, string | number> = { period };
-    for (const point of report.data.filter((p) => p.period === period)) {
+    for (const point of points.filter((p) => p.period === period)) {
       row[point.dimension_value] = report.metric === "revenue_cents" ? point.value / 100 : point.value;
     }
     return row;
@@ -58,16 +70,18 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
   const formatValue = (v: number) => (isRevenue ? `$${v.toLocaleString()}` : v.toLocaleString());
   const maxValue = Math.max(0, ...rows.flatMap((row) => seriesNames.map((s) => Number(row[s]) || 0)));
   const yAxisWidth = estimateAxisWidth([formatValue(maxValue)]);
+  // Grows with series count (up to 10 dimension values, e.g. every provider)
+  // so the plot area has room to keep lines visually separated, AND so the
+  // Tooltip -- which lists every series at the hovered period, one row each
+  // -- has vertical room to render without needing to overlap the Legend
+  // below the chart (see `wrapperStyle` on Tooltip below for the other half
+  // of that fix).
+  const chartHeight = Math.max(280, 220 + seriesNames.length * 16);
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-medium text-brand-dark">{report.title}</h2>
-          <p className="text-xs text-brand-dark/50">
-            {METRIC_LABELS[report.metric]} by {report.dimension} · {report.time_grain === "month" ? "Monthly" : "Quarterly"}
-          </p>
-        </div>
+        <h2 className="font-medium text-brand-dark">{report.title}</h2>
         {confirmingDelete ? (
           <div className="flex shrink-0 items-center gap-1 text-xs">
             <span className="text-brand-dark/60">Delete?</span>
@@ -102,12 +116,26 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
       {rows.length === 0 ? (
         <p className="text-brand-bg/70">No data for this combination yet.</p>
       ) : (
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <LineChart data={rows} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="period" tickMargin={8} />
             <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => formatValue(v as number)} />
-            <Tooltip formatter={(v) => formatValue(v as number)} />
+            {/*
+              A pinned `position` (rather than Recharts' default of following
+              the cursor) is the actual fix for the tooltip overlapping the
+              Legend -- confirmed live: with up to 10 series, the tooltip's own
+              content (a header row + one row per series) is taller than the
+              gap between the plot and the Legend below it, so a
+              cursor-following tooltip hovering anywhere in the lower half of
+              the chart grew tall enough to visually cover Legend entries
+              regardless of z-index (Recharts computes escape-viewBox clamping
+              against the plot area alone, which doesn't know the Legend's own
+              box exists below it). Pinning the tooltip to the plot's own
+              top-left corner means it only ever grows downward into the
+              plot's empty space, never into the Legend's row.
+            */}
+            <Tooltip formatter={(v) => formatValue(v as number)} position={{ x: 50, y: 4 }} wrapperStyle={{ zIndex: 30 }} />
             <Legend />
             {seriesNames.map((name, i) => (
               <Line

@@ -40,6 +40,7 @@ import { KpiCard } from "@/components/analytics/KpiCard";
 import { ProviderUtilizationChart } from "@/components/analytics/ProviderUtilizationChart";
 import { RevenueChart } from "@/components/analytics/RevenueChart";
 import { SourceBreakdownChart } from "@/components/analytics/SourceBreakdownChart";
+import { Toast } from "@/components/analytics/Toast";
 import { TopServicesChart } from "@/components/analytics/TopServicesChart";
 import { TopServicesRevenueChart } from "@/components/analytics/TopServicesRevenueChart";
 import { api } from "@/lib/api";
@@ -55,6 +56,7 @@ export default function AnalyticsPage() {
   });
 
   const [isBuildModalOpen, setBuildModalOpen] = useState(false);
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
   const { data: customReports } = useQuery({
     queryKey: ["custom-reports"],
     queryFn: api.getCustomReports,
@@ -81,7 +83,14 @@ export default function AnalyticsPage() {
         </button>
       </div>
 
-      {isBuildModalOpen && <BuildCustomAnalyticsModal onClose={() => setBuildModalOpen(false)} />}
+      {isBuildModalOpen && (
+        <BuildCustomAnalyticsModal
+          onClose={() => setBuildModalOpen(false)}
+          onCreated={() => setToast({ message: "Custom graph created", variant: "success" })}
+          onFailed={() => setToast({ message: "Failed to create custom graph", variant: "error" })}
+        />
+      )}
+      {toast && <Toast message={toast.message} variant={toast.variant} onDismiss={() => setToast(null)} />}
 
       {isLoading && <p className="text-brand-bg/70">Loading overview…</p>}
       {isError && <p className="text-coral">Could not load analytics overview.</p>}
@@ -136,12 +145,16 @@ export default function AnalyticsPage() {
       */}
       <TopServicesRevenueChart />
 
+      <DemographicsChart />
+
       {/*
-        Custom reports render below the fixed charts, in creation order --
-        newest last, so a freshly-built report appears right where the
-        person who just built it is already looking (the bottom of the
-        page, just below the button that opened the modal), not
-        interleaved among the fixed charts above.
+        Custom reports always render last, after every fixed chart --
+        per direct feedback, they were landing visually "in the middle" of
+        the page when placed just before Demographics (still true even
+        though they were already the last *fixed* section in source order),
+        since Demographics itself came after them. Creation order (newest
+        last) so a freshly-built report appears right where the person who
+        just built it is already looking: the very bottom of the page.
       */}
       {customReports && customReports.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2">
@@ -150,8 +163,6 @@ export default function AnalyticsPage() {
           ))}
         </div>
       )}
-
-      <DemographicsChart />
     </div>
   );
 }

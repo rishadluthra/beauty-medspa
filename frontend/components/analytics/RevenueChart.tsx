@@ -38,7 +38,7 @@ export function RevenueChart() {
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
-      <h2 className="mb-4 text-center font-medium text-brand-dark">Revenue Over Time</h2>
+      <h2 className="mb-4 font-medium text-brand-dark">Revenue Over Time</h2>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" />
