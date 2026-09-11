@@ -23,13 +23,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import CustomView, GraphOrder
 
+# `patients_by_source` and `patients_by_gender` are adjacent deliberately,
+# matching the frontend's own DEFAULT_CHARTS order -- the Analytics page
+# pairs those two into one row (per direct request) whenever they land
+# next to each other in the active order, which is only true by default
+# because this seed order puts them next to each other here.
 DEFAULT_CHART_KEYS = [
     "revenue_over_time",
     "patients_by_source",
+    "patients_by_gender",
     "top_services_by_bookings",
     "provider_utilization",
     "top_services_by_revenue",
-    "patients_by_gender",
     "patients_by_age_group",
 ]
 

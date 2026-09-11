@@ -36,16 +36,59 @@ import { BuildCustomAnalyticsModal } from "@/components/analytics/BuildCustomAna
 import { CreateCustomViewModal } from "@/components/analytics/CreateCustomViewModal";
 import { CustomReportCard } from "@/components/analytics/CustomReportCard";
 import { DefaultChartSlot } from "@/components/analytics/DefaultChartSlot";
+import { EditViewModal } from "@/components/analytics/EditViewModal";
 import { KpiCard } from "@/components/analytics/KpiCard";
-import { ReorderModal } from "@/components/analytics/ReorderModal";
 import { Toast } from "@/components/analytics/Toast";
 import { api } from "@/lib/api";
-import { resolveChartRef } from "@/lib/chartRefs";
+import { resolveChartRef, type ResolvedChartRef } from "@/lib/chartRefs";
+import { MAX_CUSTOM_VIEWS } from "@/lib/customViews";
 import { getDefaultChart } from "@/lib/defaultCharts";
 import { formatCents } from "@/lib/format";
-import { MAX_CUSTOM_VIEWS } from "@/lib/customViews";
 
 const ALL_GRAPHS_TAB = "all";
+
+// These two default charts pair into one row instead of each taking a full
+// row (per direct request) -- but ONLY when they land next to each other
+// in the active order (true by default; see `lib/defaultCharts.tsx`'s own
+// ordering comment). If someone drags a third graph between them, they
+// simply stop pairing and render full-width again, rather than fighting
+// the reorder feature with a fixed layout rule.
+const PAIRED_DEFAULT_KEYS = new Set(["patients_by_source", "patients_by_gender"]);
+
+function defaultKeyOf(item: ResolvedChartRef): string | null {
+  return item.isDefault ? item.ref.slice("default:".length) : null;
+}
+
+/** Groups the ordered, resolved graph list into render nodes, pairing the two charts above when adjacent. */
+function renderGraphs(items: ResolvedChartRef[]) {
+  const nodes: React.ReactNode[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const next = items[i + 1];
+    const key = defaultKeyOf(item);
+    const nextKey = next ? defaultKeyOf(next) : null;
+
+    if (key && nextKey && key !== nextKey && PAIRED_DEFAULT_KEYS.has(key) && PAIRED_DEFAULT_KEYS.has(nextKey)) {
+      nodes.push(
+        <div key={item.ref} className="grid gap-4 md:grid-cols-2">
+          <DefaultChartSlot chart={getDefaultChart(key)!} />
+          <DefaultChartSlot chart={getDefaultChart(nextKey)!} />
+        </div>,
+      );
+      i++; // consumed `next` as part of the pair
+      continue;
+    }
+
+    nodes.push(
+      item.isDefault ? (
+        <DefaultChartSlot key={item.ref} chart={getDefaultChart(key!)!} />
+      ) : (
+        <CustomReportCard key={item.ref} report={item.report!} />
+      ),
+    );
+  }
+  return nodes;
+}
 
 /** Top-level route component for `/analytics`. */
 export default function AnalyticsPage() {
@@ -65,8 +108,7 @@ export default function AnalyticsPage() {
   const [activeTab, setActiveTab] = useState<string>(ALL_GRAPHS_TAB);
   const [isBuildModalOpen, setBuildModalOpen] = useState(false);
   const [isCreateViewModalOpen, setCreateViewModalOpen] = useState(false);
-  const [isReorderOpen, setReorderOpen] = useState(false);
-  const [confirmingDeleteView, setConfirmingDeleteView] = useState(false);
+  const [isEditViewOpen, setEditViewOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
 
   const activeView = activeTab === ALL_GRAPHS_TAB ? undefined : customViews?.find((v) => v.id === activeTab);
@@ -75,13 +117,39 @@ export default function AnalyticsPage() {
     ? activeRefs.map((ref) => resolveChartRef(ref, customReports)).filter((item): item is NonNullable<typeof item> => item !== null)
     : [];
 
-  const reorderMutation = useMutation({
-    mutationFn: (refs: string[]) =>
-      activeTab === ALL_GRAPHS_TAB ? api.setGraphOrder(refs) : api.updateCustomView(activeTab, refs),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: activeTab === ALL_GRAPHS_TAB ? ["graph-order"] : ["custom-views"] });
-      setReorderOpen(false);
+  // On "All Graphs", a row dropped from the saved list isn't just hidden --
+  // there's no other place for "All Graphs" to keep a reference to a graph
+  // that still exists, so removing a custom row here means actually
+  // deleting that report (see EditViewModal's own docstring). On a view,
+  // dropping a row only ever touches that view's own ref list.
+  const editSaveMutation = useMutation({
+    mutationFn: async (newRefs: string[]) => {
+      if (activeTab === ALL_GRAPHS_TAB) {
+        const removedCustomIds = resolvedItems
+          .filter((item) => !item.isDefault && !newRefs.includes(item.ref))
+          .map((item) => item.report!.id);
+        for (const id of removedCustomIds) {
+          await api.deleteCustomReport(id);
+        }
+        await api.setGraphOrder(newRefs);
+        return removedCustomIds.length;
+      }
+      await api.updateCustomView(activeTab, newRefs);
+      return 0;
     },
+    onSuccess: (deletedCount) => {
+      if (activeTab === ALL_GRAPHS_TAB) {
+        queryClient.invalidateQueries({ queryKey: ["graph-order"] });
+        if (deletedCount > 0) queryClient.invalidateQueries({ queryKey: ["custom-reports"] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["custom-views"] });
+      }
+      setEditViewOpen(false);
+      if (deletedCount > 0) {
+        setToast({ message: deletedCount === 1 ? "Custom graph deleted" : `${deletedCount} custom graphs deleted`, variant: "success" });
+      }
+    },
+    onError: () => setToast({ message: "Failed to save changes", variant: "error" }),
   });
 
   const deleteViewMutation = useMutation({
@@ -90,7 +158,7 @@ export default function AnalyticsPage() {
       queryClient.invalidateQueries({ queryKey: ["custom-views"] });
       setToast({ message: "Custom view deleted", variant: "success" });
       setActiveTab(ALL_GRAPHS_TAB);
-      setConfirmingDeleteView(false);
+      setEditViewOpen(false);
     },
     onError: () => setToast({ message: "Failed to delete custom view", variant: "error" }),
   });
@@ -111,6 +179,10 @@ export default function AnalyticsPage() {
           curated dashboard tab made of graphs that already exist (or ones
           created inline, right there in that picker). Saved reports/views
           are shared across every viewer (this app has no per-user auth).
+          "Create Custom View" uses a frosted-glass treatment (matching the
+          menu bar's own look) rather than a plain outline -- per direct
+          request, to read as more prominent than a bare secondary button
+          without competing with the solid-gold primary CTA next to it.
         */}
         <div className="flex flex-wrap gap-2">
           <button
@@ -125,7 +197,7 @@ export default function AnalyticsPage() {
             disabled={atViewCap}
             title={atViewCap ? `You've reached the limit of ${MAX_CUSTOM_VIEWS} custom views.` : undefined}
             onClick={() => setCreateViewModalOpen(true)}
-            className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-sm font-medium text-brand-bg/80 transition-colors hover:border-brand-gold hover:text-brand-bg disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full border border-brand-gold/10 bg-brand-bg/50 px-4 py-1.5 text-sm font-medium text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl transition-colors hover:bg-brand-bg/70 disabled:cursor-not-allowed disabled:opacity-40"
           >
             + Create Custom View
           </button>
@@ -154,14 +226,16 @@ export default function AnalyticsPage() {
         />
       )}
 
-      {isReorderOpen && (
-        <ReorderModal
-          title={activeTab === ALL_GRAPHS_TAB ? "Reorder All Graphs" : `Reorder: ${activeView?.name}`}
+      {isEditViewOpen && (
+        <EditViewModal
+          title={activeTab === ALL_GRAPHS_TAB ? "Edit All Graphs" : `Edit View: ${activeView?.name}`}
           items={resolvedItems}
-          allowRemove={activeTab !== ALL_GRAPHS_TAB}
-          isSaving={reorderMutation.isPending}
-          onSave={(refs) => reorderMutation.mutate(refs)}
-          onClose={() => setReorderOpen(false)}
+          mode={activeTab === ALL_GRAPHS_TAB ? "allGraphs" : "view"}
+          isSaving={editSaveMutation.isPending}
+          onSave={(refs) => editSaveMutation.mutate(refs)}
+          onClose={() => setEditViewOpen(false)}
+          onDeleteView={() => deleteViewMutation.mutate()}
+          isDeletingView={deleteViewMutation.isPending}
         />
       )}
 
@@ -197,68 +271,17 @@ export default function AnalyticsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <AnalyticsTabBar tabs={tabs} activeKey={activeTab} onSelect={setActiveTab} />
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setReorderOpen(true)}
-            className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-sm font-medium text-brand-bg/80 backdrop-blur-sm transition-colors hover:border-brand-gold hover:text-brand-bg"
-          >
-            Reorder
-          </button>
-          {activeView &&
-            (confirmingDeleteView ? (
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-brand-bg/70">Delete this view?</span>
-                <button
-                  type="button"
-                  disabled={deleteViewMutation.isPending}
-                  onClick={() => deleteViewMutation.mutate()}
-                  className="rounded-full border border-coral px-3 py-1 text-coral transition-colors hover:bg-coral hover:text-white disabled:opacity-50"
-                >
-                  {deleteViewMutation.isPending ? "…" : "Yes"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDeleteView(false)}
-                  className="rounded-full border border-brand-bg/20 px-3 py-1 text-brand-bg/70 transition-colors hover:border-brand-gold"
-                >
-                  No
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmingDeleteView(true)}
-                className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-sm font-medium text-brand-bg/80 backdrop-blur-sm transition-colors hover:border-coral hover:text-coral"
-              >
-                Delete View
-              </button>
-            ))}
-        </div>
+        <button
+          type="button"
+          onClick={() => setEditViewOpen(true)}
+          className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-sm font-medium text-brand-bg/80 backdrop-blur-sm transition-colors hover:border-brand-gold hover:text-brand-bg"
+        >
+          Edit View
+        </button>
       </div>
 
-      {/*
-        Every graph -- default and custom alike -- renders full row width,
-        one per row (not a 2-up grid): this list is drag-reorderable, and a
-        linear stack is what that requires; it also gives every chart the
-        same "more room to breathe" benefit custom reports already got
-        (some have up to 10 series, needing real width for their legend
-        and axis labels to stay readable).
-      */}
       <div className="space-y-4">
-        {resolvedItems.map((item) =>
-          item.isDefault ? (
-            <DefaultChartSlot key={item.ref} chart={getDefaultChart(item.ref.slice("default:".length))!} />
-          ) : (
-            <CustomReportCard
-              key={item.ref}
-              report={item.report!}
-              showDeleteButton={activeTab === ALL_GRAPHS_TAB}
-              onDeleted={() => setToast({ message: "Custom graph deleted", variant: "success" })}
-              onDeleteFailed={() => setToast({ message: "Failed to delete custom graph", variant: "error" })}
-            />
-          ),
-        )}
+        {renderGraphs(resolvedItems)}
         {activeTab !== ALL_GRAPHS_TAB && resolvedItems.length === 0 && (
           <p className="text-brand-bg/70">This view has no graphs left to show. Delete it, or build a new one.</p>
         )}

@@ -21,13 +21,20 @@ export interface DefaultChartEntry {
   Component: React.ComponentType;
 }
 
+// `patients_by_source` and `patients_by_gender` sit adjacent here
+// deliberately -- per direct request, those two specific charts pair up
+// into one row instead of each taking a full row (see the Analytics
+// page's `PAIRED_DEFAULT_KEYS` rendering rule, which pairs them only when
+// they land next to each other in the active order -- true here by
+// default, but also still true if someone drags something else in
+// between, at which point they simply render full-width again).
 export const DEFAULT_CHARTS: DefaultChartEntry[] = [
   { key: "revenue_over_time", label: "Revenue Over Time", Component: RevenueChart },
   { key: "patients_by_source", label: "How Patients Find Us", Component: SourceBreakdownChart },
+  { key: "patients_by_gender", label: "Patients by Gender", Component: PatientsByGenderChart },
   { key: "top_services_by_bookings", label: "Top Services by Bookings", Component: TopServicesChart },
   { key: "provider_utilization", label: "Provider Utilization", Component: ProviderUtilizationChart },
   { key: "top_services_by_revenue", label: "Top Services by Revenue", Component: TopServicesRevenueChart },
-  { key: "patients_by_gender", label: "Patients by Gender", Component: PatientsByGenderChart },
   { key: "patients_by_age_group", label: "Patients by Age Group", Component: PatientsByAgeGroupChart },
 ];
 

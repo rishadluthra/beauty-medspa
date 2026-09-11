@@ -8,7 +8,7 @@ export function GraphBadge({ isDefault }: { isDefault: boolean }) {
   return (
     <span
       className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-        isDefault ? "bg-brand-dark/10 text-brand-dark/60" : "bg-brand-gold/20 text-brand-gold-dark"
+        isDefault ? "bg-brand-sage/15 text-brand-sage" : "bg-brand-gold/20 text-brand-gold-dark"
       }`}
     >
       {isDefault ? "Default" : "Custom"}

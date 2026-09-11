@@ -2,7 +2,7 @@
 
 /**
  * One saved custom report from the self-serve "Build Custom Analytics"
- * feature: a title, a delete control, and a multi-line chart pivoted from
+ * feature: a title, a "Custom" badge, and a multi-line chart pivoted from
  * the report's flat `data: CustomReportPoint[]` (one point per (period,
  * dimension_value) cell) -- one Line per distinct `dimension_value` (e.g.
  * one line per provider), x-axis = period.
@@ -13,18 +13,16 @@
  * of allowing someone to name the graph and then also having a grey text
  * below it saying what the graph is").
  *
- * Delete is a two-click confirm (not a bare single click, and not a
- * browser-native `confirm()` that would clash with the app's own modal
- * styling) -- deleting a saved report has no undo, but this app has no
- * per-user ownership to gate it behind either, so a lightweight inline
- * confirm is the right amount of friction.
+ * No delete control here anymore -- deleting a graph now happens through
+ * the "Edit View" modal (on the "All Graphs" tab specifically, since a
+ * view's own Edit modal only removes a graph from that view, not from
+ * existence). Keeping delete out of this card removes a second place the
+ * same destructive action could be triggered from.
  */
 
-import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { api } from "@/lib/api";
 import { estimateAxisWidth } from "@/lib/chartAxis";
 import { CATEGORICAL_PALETTE } from "@/lib/chartColors";
 import { formatLabel } from "@/lib/format";
@@ -60,136 +58,124 @@ function pivot(report: CustomReport): { rows: Record<string, string | number>[];
   return { rows, seriesNames };
 }
 
-interface Props {
-  report: CustomReport;
-  /** Called after a successful delete, so the page can show the same toast confirmation create uses. */
-  onDeleted: () => void;
-  /** Called if the delete request fails. */
-  onDeleteFailed: () => void;
-  /**
-   * Whether to show the (global, irreversible) delete-this-graph control.
-   * `true` on the "All Graphs" tab, where deleting really does remove the
-   * graph everywhere. `false` inside a custom view -- removing a graph
-   * from a curated view is a "remove from this view" action instead
-   * (handled by that view's reorder modal), not a global delete, so this
-   * button is hidden there to avoid a destructive action reachable from a
-   * context that looks merely like curation.
-   */
-  showDeleteButton?: boolean;
+interface TooltipContentProps {
+  active?: boolean;
+  label?: string;
+  payload?: { dataKey: string; value: number; color: string }[];
+  formatValue: (v: number) => string;
 }
 
-export function CustomReportCard({ report, onDeleted, onDeleteFailed, showDeleteButton = true }: Props) {
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const queryClient = useQueryClient();
-  const deleteMutation = useMutation({
-    mutationFn: () => api.deleteCustomReport(report.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["custom-reports"] });
-      onDeleted();
-    },
-    onError: () => onDeleteFailed(),
-  });
+/**
+ * A translucent, frosted-glass tooltip -- matching the app's own menu bar
+ * styling (`border-brand-gold/10 bg-brand-bg/70 backdrop-blur-xl`) -- per
+ * direct request, replacing Recharts' plain opaque-white default box.
+ */
+function GlassTooltip({ active, label, payload, formatValue }: TooltipContentProps) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="max-w-[220px] rounded-2xl border border-brand-gold/10 bg-brand-bg/80 px-4 py-3 text-sm text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl">
+      <p className="mb-1.5 font-medium">{label}</p>
+      <div className="space-y-1">
+        {payload.map((entry) => (
+          <p key={entry.dataKey} style={{ color: entry.color }}>
+            {entry.dataKey}: {formatValue(entry.value)}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
 
+export function CustomReportCard({ report }: { report: CustomReport }) {
   const { rows, seriesNames } = useMemo(() => pivot(report), [report]);
   const isRevenue = report.metric === "revenue_cents";
   const formatValue = (v: number) => (isRevenue ? `$${v.toLocaleString()}` : v.toLocaleString());
   const maxValue = Math.max(0, ...rows.flatMap((row) => seriesNames.map((s) => Number(row[s]) || 0)));
   const yAxisWidth = estimateAxisWidth([formatValue(maxValue)]);
-  const chartHeight = 380;
+  const chartHeight = 320;
+
+  // The tooltip is pinned to the plot's own top-right corner (where the
+  // Legend used to live, before it moved to the table below) rather than
+  // following the cursor -- Recharts' `position` prop takes pixel offsets
+  // in the chart's own coordinate space, so pinning it to the RIGHT edge
+  // needs the actual rendered width, measured here via ResizeObserver
+  // (a `width="100%"` ResponsiveContainer's pixel width isn't known
+  // ahead of render).
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => setChartWidth(entries[0].contentRect.width));
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+  const tooltipX = Math.max(20, chartWidth - 240);
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="font-medium text-brand-dark">{report.title}</h2>
-          <GraphBadge isDefault={false} />
-        </div>
-        {!showDeleteButton ? null : confirmingDelete ? (
-          <div className="flex shrink-0 items-center gap-1 text-xs">
-            <span className="text-brand-dark/60">Delete?</span>
-            <button
-              type="button"
-              disabled={deleteMutation.isPending}
-              onClick={() => deleteMutation.mutate()}
-              className="rounded-full border border-coral px-2 py-1 text-coral transition-colors hover:bg-coral hover:text-white disabled:opacity-50"
-            >
-              {deleteMutation.isPending ? "…" : "Yes"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmingDelete(false)}
-              className="rounded-full border border-brand-dark/20 px-2 py-1 text-brand-dark/70 transition-colors hover:border-brand-gold"
-            >
-              No
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            aria-label={`Delete ${report.title}`}
-            onClick={() => setConfirmingDelete(true)}
-            className="shrink-0 rounded-full border border-brand-dark/20 px-3 py-1 text-xs text-brand-dark/60 transition-colors hover:border-coral hover:text-coral"
-          >
-            Delete
-          </button>
-        )}
+        <h2 className="font-medium text-brand-dark">{report.title}</h2>
+        <GraphBadge isDefault={false} />
       </div>
 
       {rows.length === 0 ? (
         <p className="text-brand-bg/70">No data for this combination yet.</p>
       ) : (
-        <ResponsiveContainer width="100%" height={chartHeight}>
-          <LineChart data={rows} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="period" tickMargin={8} />
-            <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => formatValue(v as number)} />
-            {/*
-              A pinned `position` (rather than Recharts' default of following
-              the cursor) keeps the tooltip predictable and clear of the
-              Legend's own column on the right -- it only ever grows downward
-              from the plot's top-left corner into the plot's own space.
-            */}
-            <Tooltip formatter={(v) => formatValue(v as number)} position={{ x: 50, y: 4 }} wrapperStyle={{ zIndex: 30 }} />
-            {/*
-              A vertical legend in its own column on the right -- not
-              Recharts' default horizontal row that wraps below the chart --
-              is what actually fixes "the legend looks unorganized": with up
-              to 10 series, a wrapped horizontal legend produced a ragged,
-              uneven multi-row block with no clear reading order. A single
-              vertical column, one name per line, reads top-to-bottom exactly
-              like the report's own dimension list would in a table. The
-              chart is now full page-width (see the Analytics page's custom-
-              reports section), which is what makes room for this column
-              without shrinking the plot itself. `maxHeight` + `overflowY`
-              caps the column at the chart's own height rather than letting
-              10 rows push the card taller than intended, in case a future
-              dimension ever has more values than fit comfortably.
-            */}
-            <Legend
-              layout="vertical"
-              verticalAlign="middle"
-              align="right"
-              wrapperStyle={{ maxHeight: chartHeight - 32, overflowY: "auto", paddingLeft: 16, lineHeight: "1.9rem" }}
-            />
+        <>
+          <div ref={containerRef}>
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <LineChart data={rows} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="period" tickMargin={8} />
+                <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => formatValue(v as number)} />
+                <Tooltip
+                  content={<GlassTooltip formatValue={formatValue} />}
+                  position={{ x: tooltipX, y: 4 }}
+                  wrapperStyle={{ zIndex: 30 }}
+                />
+                {seriesNames.map((name, i) => (
+                  <Line
+                    key={name}
+                    type="monotone"
+                    dataKey={name}
+                    name={name}
+                    stroke={CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length]}
+                    // The palette has 7 colors, but a dimension can have up to 10 distinct
+                    // values (e.g. provider) -- past one full cycle, dash the line so two
+                    // series sharing a color (e.g. series 0 and 7) stay visually
+                    // distinguishable instead of rendering as identical, unlabelable lines.
+                    strokeDasharray={i >= CATEGORICAL_PALETTE.length ? "6 3" : undefined}
+                    strokeWidth={2}
+                    connectNulls
+                    dot={false}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/*
+            A real legend table below the chart, not Recharts' own
+            <Legend> -- per direct feedback that the legend "looked messy."
+            A responsive grid (2 columns on mobile, up to 4 on wider
+            screens) rather than a fixed-column HTML `<table>` -- a fixed
+            4 columns overflowed a 390px mobile card, truncating names
+            like "Barry Snyder" to "Barry Sn". Each cell is just a color
+            swatch + name (matching what Recharts' legend items showed,
+            minus the wrapping/ordering issues).
+          */}
+          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3 md:grid-cols-4">
             {seriesNames.map((name, i) => (
-              <Line
-                key={name}
-                type="monotone"
-                dataKey={name}
-                name={name}
-                stroke={CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length]}
-                // The palette has 7 colors, but a dimension can have up to 10 distinct
-                // values (e.g. provider) -- past one full cycle, dash the line so two
-                // series sharing a color (e.g. series 0 and 7) stay visually
-                // distinguishable instead of rendering as identical, unlabelable lines.
-                strokeDasharray={i >= CATEGORICAL_PALETTE.length ? "6 3" : undefined}
-                strokeWidth={2}
-                connectNulls
-                dot={false}
-              />
+              <div key={name} className="flex items-center gap-1.5 overflow-hidden">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length] }}
+                />
+                <span className="truncate text-brand-dark/80">{name}</span>
+              </div>
             ))}
-          </LineChart>
-        </ResponsiveContainer>
+          </div>
+        </>
       )}
     </div>
   );
