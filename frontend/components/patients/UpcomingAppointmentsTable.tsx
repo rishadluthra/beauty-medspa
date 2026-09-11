@@ -3,15 +3,12 @@
 /**
  * Upcoming Appointments dashboard — the default view on the Patients page.
  * Unlike `PatientTable` (the full patient roster), this shows one row per
- * patient with a scheduled future appointment, soonest first, plus two
- * follow-up signals a front desk agent would actually triage by: whether
- * today's appointment still needs confirming, and whether the patient has
- * an unpaid appointment on file. See the backend's `list_upcoming_appointments`
- * for exactly what "upcoming"/"today" mean against this seed dataset.
+ * patient with a scheduled future appointment, soonest first. See the
+ * backend's `list_upcoming_appointments` for exactly what "upcoming"/
+ * "today" mean against this seed dataset.
  */
 
 import { useState } from "react";
-import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
@@ -19,17 +16,6 @@ import { api } from "@/lib/api";
 import { calculateAge, formatDateTime, formatPhone } from "@/lib/format";
 
 const PAGE_SIZE = 25;
-
-/** Small colored pill for one follow-up reason. Both can appear together if both apply. */
-function FollowUpBadge({ tone, children }: { tone: "amber" | "rust"; children: ReactNode }) {
-  const toneClassName =
-    tone === "amber" ? "bg-brand-gold/15 text-brand-gold-dark" : "bg-brand-rust/10 text-brand-rust";
-  return (
-    <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${toneClassName}`}>
-      {children}
-    </span>
-  );
-}
 
 export function UpcomingAppointmentsTable() {
   const router = useRouter();
@@ -51,19 +37,18 @@ export function UpcomingAppointmentsTable() {
             <table className="w-full table-fixed text-sm">
               <thead className="text-left text-brand-dark">
                 <tr className="border-b border-brand-gold/20">
-                  <th className="w-[20%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Name</th>
-                  <th className="w-[6%] whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Age</th>
-                  <th className="w-[14%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
-                  <th className="w-[24%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Email</th>
-                  <th className="w-[18%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Follow-up</th>
-                  <th className="w-[18%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Upcoming Appt.</th>
+                  <th className="w-[22%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Name</th>
+                  <th className="w-[7%] whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Age</th>
+                  <th className="w-[17%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
+                  <th className="w-[28%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Email</th>
+                  <th className="w-[26%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Upcoming Appt.</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-dark/5 text-brand-dark">
-                {/* Empty-state row. colSpan={6} must match the number of <th> columns above. */}
+                {/* Empty-state row. colSpan={5} must match the number of <th> columns above. */}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-brand-sage">
+                    <td colSpan={5} className="p-6 text-center text-brand-sage">
                       No upcoming appointments.
                     </td>
                   </tr>
@@ -78,15 +63,6 @@ export function UpcomingAppointmentsTable() {
                     <td className="px-4 py-3.5 text-right">{calculateAge(item.date_of_birth)}</td>
                     <td className="truncate px-4 py-3.5">{formatPhone(item.phone)}</td>
                     <td className="truncate px-4 py-3.5">{item.email}</td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex flex-wrap gap-1">
-                        {item.needs_confirmation && <FollowUpBadge tone="amber">Confirm Today</FollowUpBadge>}
-                        {item.has_unpaid_appointment && <FollowUpBadge tone="rust">Unpaid</FollowUpBadge>}
-                        {!item.needs_confirmation && !item.has_unpaid_appointment && (
-                          <span className="text-brand-dark/30">—</span>
-                        )}
-                      </div>
-                    </td>
                     <td className="px-4 py-3.5">{formatDateTime(item.upcoming_appointment_date)}</td>
                   </tr>
                 ))}
@@ -112,13 +88,7 @@ export function UpcomingAppointmentsTable() {
                   <span className="text-sm text-brand-dark/60">{calculateAge(item.date_of_birth)}</span>
                 </div>
                 <p className="mt-1 text-sm text-brand-dark/60">{formatPhone(item.phone)} · {item.email}</p>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <span className="font-medium">{formatDateTime(item.upcoming_appointment_date)}</span>
-                  <div className="flex flex-wrap gap-1">
-                    {item.needs_confirmation && <FollowUpBadge tone="amber">Confirm Today</FollowUpBadge>}
-                    {item.has_unpaid_appointment && <FollowUpBadge tone="rust">Unpaid</FollowUpBadge>}
-                  </div>
-                </div>
+                <p className="mt-2 text-sm font-medium">{formatDateTime(item.upcoming_appointment_date)}</p>
               </div>
             ))}
           </div>

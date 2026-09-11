@@ -8,7 +8,6 @@ aggregation logic (spend totals, appointment counts) and filtering.
 from datetime import date, datetime, timedelta
 
 from app.repositories.patients import (
-    UPCOMING_REFERENCE_OFFSET_DAYS,
     PatientFilters,
     get_patient_detail,
     list_patients,
@@ -48,6 +47,28 @@ async def test_list_patients_returns_paid_total_and_appointment_count(db_session
     item = result.items[0]
     assert item.appointment_count == 1
     assert item.total_spent_cents == 10000
+
+
+async def test_list_patients_last_appointment_date_is_the_actual_visit_time_not_created_date(db_session):
+    """last_appointment_date comes from AppointmentService.start (the real scheduled visit
+    time), not Appointment.created_date. created_date is set here to the opposite order of
+    the real appointment times, so this fails if the aggregate ever regresses to created_date.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1"), make_provider(), make_service(),
+        make_appointment(id="apt_1", patient_id="pat_1", created_date=datetime(2026, 1, 1)),
+        make_appointment(id="apt_2", patient_id="pat_1", created_date=datetime(2025, 1, 1)),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_1", start=datetime(2025, 3, 1, 9, 0), end=datetime(2025, 3, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_2", start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30)),
+    ])
+    await db_session.commit()
+
+    result = await list_patients(db_session, PatientFilters())
+
+    assert result.items[0].last_appointment_date == datetime(2025, 11, 1, 9, 0)
 
 
 async def test_list_patients_filters_by_source(db_session):
@@ -125,14 +146,21 @@ async def test_get_patient_detail_returns_none_for_unknown_id(db_session):
 async def test_get_patient_detail_includes_profile_and_correct_aggregates(db_session):
     """Profile fields (including address, which the table view omits) plus the same
     aggregates as list_patients: appointment_count, total_spent_cents (paid only), last_appointment_date.
+
+    last_appointment_date must come from AppointmentService.start (the actual scheduled
+    visit time), not Appointment.created_date -- created_date is set here to be
+    deliberately unrelated to (and in the opposite order of) the real appointment times,
+    to prove the aggregate isn't accidentally reading the wrong column.
     """
     db_session.add_all([
         make_patient(id="pat_1"), make_provider(), make_service(),
-        make_appointment(id="apt_1", patient_id="pat_1", created_date=datetime(2026, 1, 1)),
-        make_appointment(id="apt_2", patient_id="pat_1", created_date=datetime(2026, 1, 15)),
+        make_appointment(id="apt_1", patient_id="pat_1", created_date=datetime(2026, 1, 15)),
+        make_appointment(id="apt_2", patient_id="pat_1", created_date=datetime(2026, 1, 1)),
     ])
     await db_session.flush()
     db_session.add_all([
+        make_appointment_service(appointment_id="apt_1", start=datetime(2025, 3, 1, 9, 0), end=datetime(2025, 3, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_2", start=datetime(2025, 9, 1, 9, 0), end=datetime(2025, 9, 1, 9, 30)),
         make_payment(id="pay_1", patient_id="pat_1", appointment_id="apt_1", amount=15000, status="paid"),
         make_payment(id="pay_2", patient_id="pat_1", appointment_id="apt_2", amount=9999, status="failed"),
     ])
@@ -144,22 +172,38 @@ async def test_get_patient_detail_includes_profile_and_correct_aggregates(db_ses
     assert result.patient.address == "123 Main St"
     assert result.patient.appointment_count == 2
     assert result.patient.total_spent_cents == 15000  # the failed payment must not count
-    assert result.patient.last_appointment_date == datetime(2026, 1, 15)
+    assert result.patient.last_appointment_date == datetime(2025, 9, 1, 9, 0)  # apt_2's service start, the later real visit
 
 
-async def test_get_patient_detail_orders_appointments_most_recent_first(db_session):
-    """Appointment history is ordered newest-first, regardless of insertion order."""
+async def test_get_patient_detail_orders_appointments_by_actual_visit_date_not_created_date(db_session):
+    """Appointment history is ordered by each appointment's actual scheduled visit date
+    (its earliest AppointmentService.start), most recent first -- NOT by created_date.
+
+    created_date is deliberately set in the *opposite* order from the real appointment
+    times below, so this test would fail if the sort ever regresses back to created_date.
+    """
     db_session.add_all([
-        make_patient(id="pat_1"),
-        make_appointment(id="apt_old", patient_id="pat_1", created_date=datetime(2025, 6, 1)),
-        make_appointment(id="apt_new", patient_id="pat_1", created_date=datetime(2026, 1, 1)),
+        make_patient(id="pat_1"), make_provider(), make_service(),
+        make_appointment(id="apt_old", patient_id="pat_1", created_date=datetime(2026, 1, 1)),
+        make_appointment(id="apt_new", patient_id="pat_1", created_date=datetime(2025, 6, 1)),
         make_appointment(id="apt_mid", patient_id="pat_1", created_date=datetime(2025, 9, 1)),
+        make_appointment(id="apt_unscheduled", patient_id="pat_1", created_date=datetime(2025, 1, 1)),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_old", start=datetime(2025, 1, 1, 9, 0), end=datetime(2025, 1, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_new", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_mid", start=datetime(2025, 9, 1, 9, 0), end=datetime(2025, 9, 1, 9, 30)),
+        # apt_unscheduled has no AppointmentService rows at all -- nothing to sort it by
+        # chronologically, so it must sort last rather than crowding out real dates.
     ])
     await db_session.commit()
 
     result = await get_patient_detail(db_session, "pat_1")
 
-    assert [appointment.id for appointment in result.appointments] == ["apt_new", "apt_mid", "apt_old"]
+    assert [appointment.id for appointment in result.appointments] == ["apt_new", "apt_mid", "apt_old", "apt_unscheduled"]
+    assert result.appointments[0].appointment_date == datetime(2026, 1, 1, 9, 0)
+    assert result.appointments[-1].appointment_date is None
 
 
 async def test_get_patient_detail_includes_services_and_payment_per_appointment(db_session):
@@ -234,75 +278,73 @@ async def test_get_patient_detail_includes_adjacent_patient_ids_for_navigation(d
     assert last.next_patient_id is None
 
 
-async def test_list_upcoming_appointments_computes_reference_date_and_follow_up_flags(db_session):
-    """Covers the whole Upcoming Appointments contract in one seeded scenario:
-
-    - `reference_date` is derived from the latest AppointmentService.start in the data
-      (max_start - UPCOMING_REFERENCE_OFFSET_DAYS), not the real wall-clock date.
-    - Each patient shows their *soonest* upcoming (non-cancelled, >= reference_now)
-      appointment, even when they have more than one qualifying appointment (pat_a).
-    - `needs_confirmation` is true only for a "pending" appointment landing on the
-      reference date itself (pat_b) -- including one scheduled *earlier* in that day
-      than `reference_now`'s own arbitrary time-of-day component (10:00 here), since
-      the upcoming/past boundary is the start of the reference day, not that exact
-      timestamp.
-    - `has_unpaid_appointment` is true only for a *non-cancelled* past appointment with
-      no Payment row (pat_a); a cancelled past appointment with no payment (pat_c)
-      must NOT trigger it.
-    - A patient with no upcoming appointment at all (pat_d) doesn't appear.
+async def test_list_upcoming_appointments_anchors_to_first_of_second_to_last_data_month(db_session):
+    """reference_date is the 1st of the second-to-last *distinct calendar month that has
+    any scheduled appointment* -- not literally "one month back" regardless of whether
+    that month has data. With appointments in Nov 2025, Dec 2025, and Feb 2026 (no
+    January at all), the two latest months-with-data are Feb and Dec, so reference_date
+    is 2025-12-01 -- December, not the empty January in between.
     """
-    max_start = datetime(2026, 2, 1, 10, 0)
-    reference_now = max_start - timedelta(days=UPCOMING_REFERENCE_OFFSET_DAYS)
+    db_session.add_all([
+        make_patient(id="pat_1"), make_provider(), make_service(),
+        make_appointment(id="apt_1", patient_id="pat_1", status="confirmed"),
+        make_appointment(id="apt_2", patient_id="pat_1", status="confirmed"),
+        make_appointment(id="apt_3", patient_id="pat_1", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_1", start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_2", start=datetime(2025, 12, 15, 9, 0), end=datetime(2025, 12, 15, 9, 30)),
+        make_appointment_service(appointment_id="apt_3", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
 
+    result = await list_upcoming_appointments(db_session)
+
+    assert result.reference_date == date(2025, 12, 1)
+
+
+async def test_list_upcoming_appointments_selects_soonest_and_excludes_cancelled_and_past(db_session):
+    """Covers the rest of the Upcoming Appointments contract in one seeded scenario, all
+    anchored to reference_date = 2026-01-01 (set by the Feb 2026 appointment below):
+
+    - Each patient shows their *soonest* upcoming (non-cancelled, >= reference date)
+      appointment, even when they have more than one qualifying one (pat_a).
+    - A same-day appointment right at the start of the reference date counts as upcoming
+      (pat_b) -- the boundary is now inherently midnight (date_trunc to month start),
+      not an arbitrary time-of-day carried over from the data.
+    - A patient whose only on-or-after-reference appointment is cancelled (pat_c) doesn't
+      appear at all -- a cancelled booking isn't a real upcoming visit.
+    - A patient with only appointments before the reference date (pat_d) doesn't appear.
+    """
     db_session.add_all([
         make_patient(id="pat_a", first_name="Alice", last_name="Anderson"),
         make_patient(id="pat_b", first_name="Bob", last_name="Baker"),
         make_patient(id="pat_c", first_name="Carol", last_name="Carter"),
         make_patient(id="pat_d", first_name="Dana", last_name="Dean"),
         make_provider(), make_service(),
-        make_appointment(id="apt_a_past", patient_id="pat_a", status="confirmed"),
-        make_appointment(id="apt_a_upcoming", patient_id="pat_a", status="confirmed"),
-        make_appointment(id="apt_a_max", patient_id="pat_a", status="confirmed"),
-        make_appointment(id="apt_b_upcoming", patient_id="pat_b", status="pending"),
-        make_appointment(id="apt_c_past_cancelled", patient_id="pat_c", status="cancelled"),
-        make_appointment(id="apt_c_upcoming", patient_id="pat_c", status="confirmed"),
+        make_appointment(id="apt_a_soon", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_a_later", patient_id="pat_a", status="confirmed"),  # also sets the latest data month
+        make_appointment(id="apt_b_today", patient_id="pat_b", status="pending"),
+        make_appointment(id="apt_c_cancelled", patient_id="pat_c", status="cancelled"),
         make_appointment(id="apt_d_past", patient_id="pat_d", status="confirmed"),
     ])
     await db_session.flush()
-
-    def _svc(appointment_id, start):
-        return make_appointment_service(appointment_id=appointment_id, start=start, end=start + timedelta(minutes=30))
-
     db_session.add_all([
-        _svc("apt_a_past", reference_now - timedelta(days=30)),
-        _svc("apt_a_upcoming", reference_now + timedelta(days=2)),
-        _svc("apt_a_max", max_start),  # the row that actually sets max_start
-        # 08:00, deliberately *before* reference_now's own 10:00 time-of-day
-        # component, to prove the cutoff is the start of the day, not that
-        # exact timestamp.
-        _svc("apt_b_upcoming", reference_now.replace(hour=8, minute=0)),
-        _svc("apt_c_past_cancelled", reference_now - timedelta(days=10)),
-        _svc("apt_c_upcoming", reference_now + timedelta(days=5)),
-        _svc("apt_d_past", reference_now - timedelta(days=5)),
-        # Deliberately no Payment rows for any appointment -- pat_a's and
-        # pat_c's past appointments are both unpaid; only pat_a's should count
-        # since pat_c's is cancelled.
+        make_appointment_service(appointment_id="apt_a_soon", start=datetime(2026, 1, 15, 9, 0), end=datetime(2026, 1, 15, 9, 30)),
+        make_appointment_service(appointment_id="apt_a_later", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+        make_appointment_service(appointment_id="apt_b_today", start=datetime(2026, 1, 1, 0, 30), end=datetime(2026, 1, 1, 1, 0)),
+        make_appointment_service(appointment_id="apt_c_cancelled", start=datetime(2026, 1, 10, 9, 0), end=datetime(2026, 1, 10, 9, 30)),
+        make_appointment_service(appointment_id="apt_d_past", start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30)),
     ])
     await db_session.commit()
 
     result = await list_upcoming_appointments(db_session)
 
-    assert result.reference_date == reference_now.date()
+    assert result.reference_date == date(2026, 1, 1)
 
     by_id = {item.id: item for item in result.items}
+    assert by_id["pat_a"].upcoming_appointment_date == datetime(2026, 1, 15, 9, 0)
+    assert by_id["pat_b"].upcoming_appointment_date == datetime(2026, 1, 1, 0, 30)
+    assert "pat_c" not in by_id
     assert "pat_d" not in by_id
-
-    assert by_id["pat_a"].upcoming_appointment_date == reference_now + timedelta(days=2)
-    assert by_id["pat_a"].has_unpaid_appointment is True
-    assert by_id["pat_a"].needs_confirmation is False
-
-    assert by_id["pat_b"].needs_confirmation is True
-    assert by_id["pat_b"].has_unpaid_appointment is False
-
-    assert by_id["pat_c"].has_unpaid_appointment is False
-    assert by_id["pat_c"].needs_confirmation is False

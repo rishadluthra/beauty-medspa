@@ -66,10 +66,22 @@ class PaymentSummary(BaseModel):
 
 
 class AppointmentDetail(BaseModel):
-    """One appointment in a patient's history: its status, every service performed, and its payment."""
+    """One appointment in a patient's history: its status, every service performed, and its payment.
+
+    `appointment_date` is the actual scheduled visit date/time (the
+    earliest of its services' `start` times) -- this is the date to
+    *display* and sort by. `created_date` is merely when the booking
+    record was entered into the system and can be unrelated to when the
+    visit is/was scheduled (e.g. booked in January for a visit the
+    following January); it's kept here only as secondary "booked on"
+    information, never as the primary date shown for an appointment.
+    `appointment_date` is `None` for an appointment with no
+    AppointmentService rows at all (nothing scheduled yet).
+    """
 
     id: str
     status: str
+    appointment_date: datetime | None
     created_date: datetime
     services: list[AppointmentServiceItem]
     payment: PaymentSummary | None
@@ -106,16 +118,7 @@ class PatientDetailResponse(BaseModel):
 
 
 class UpcomingPatientItem(BaseModel):
-    """One row in the Upcoming Appointments dashboard: a patient with a scheduled future
-    appointment, plus the two follow-up signals a front desk agent would triage by.
-
-    `needs_confirmation` is true when this patient's soonest upcoming appointment falls on
-    the view's reference "today" (see `list_upcoming_appointments`) and is still "pending"
-    (not yet confirmed) -- something to call about today. `has_unpaid_appointment` is true
-    when this patient has at least one *past*, non-cancelled appointment with no `Payment`
-    record at all -- a real billing gap to follow up on. See `list_upcoming_appointments`
-    for why this isn't based on a "failed" payment status (the seed data has none).
-    """
+    """One row in the Upcoming Appointments dashboard: a patient with a scheduled future appointment."""
 
     id: str
     first_name: str
@@ -125,8 +128,6 @@ class UpcomingPatientItem(BaseModel):
     email: str
     upcoming_appointment_date: datetime
     appointment_status: str
-    needs_confirmation: bool
-    has_unpaid_appointment: bool
 
 
 class UpcomingAppointmentsResponse(BaseModel):

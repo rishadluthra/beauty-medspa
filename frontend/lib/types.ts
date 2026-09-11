@@ -124,6 +124,13 @@ export interface PaymentSummary {
 export interface AppointmentDetail {
   id: string;
   status: string;
+  /**
+   * The actual scheduled visit date/time (earliest of its services' start times) — this
+   * is the date to display, not `created_date` (merely when the booking record was
+   * entered, which can be unrelated to when the visit is/was scheduled). `null` if the
+   * appointment has no services scheduled yet.
+   */
+  appointment_date: string | null;
   created_date: string;
   services: AppointmentServiceItem[];
   payment: PaymentSummary | null;
@@ -165,10 +172,6 @@ export interface UpcomingPatientItem {
   email: string;
   upcoming_appointment_date: string;
   appointment_status: string;
-  /** True when this patient's upcoming appointment is on the view's `reference_date` and still "pending". */
-  needs_confirmation: boolean;
-  /** True when this patient has a past, non-cancelled appointment with no payment on record. */
-  has_unpaid_appointment: boolean;
 }
 
 /** Paginated envelope for the Upcoming Appointments dashboard. */

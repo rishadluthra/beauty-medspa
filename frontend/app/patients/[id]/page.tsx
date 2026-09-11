@@ -208,7 +208,19 @@ export default function PatientDetailPage() {
                 className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-medium">{formatDate(appointment.created_date)}</p>
+                  {/*
+                    `appointment_date` (the actual scheduled visit time,
+                    derived from its services) is what's shown here — NOT
+                    `created_date` (when the booking record was entered,
+                    which can be a completely different, unrelated date).
+                    Showing created_date here was a real bug: a patient's
+                    upcoming visit could show as "no appointment" on this
+                    page simply because the booking had been made months
+                    earlier under a different date.
+                  */}
+                  <p className="font-medium">
+                    {appointment.appointment_date ? formatDate(appointment.appointment_date) : "Not yet scheduled"}
+                  </p>
                   {/*
                     Explicitly labeled "Status" — pending/confirmed/cancelled
                     describes the appointment's own lifecycle (was it booked

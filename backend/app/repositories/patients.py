@@ -8,7 +8,7 @@ service as "tools" over the data.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,11 +25,6 @@ from app.schemas.patient import (
     UpcomingAppointmentsResponse,
     UpcomingPatientItem,
 )
-
-# How far before the latest scheduled appointment in the data the Upcoming
-# Appointments view's reference "today" sits -- see
-# `_get_upcoming_reference_now` for why this exists at all.
-UPCOMING_REFERENCE_OFFSET_DAYS = 14
 
 
 def _years_before(from_date: date, years: int) -> date:
@@ -104,8 +99,17 @@ async def list_patients(
         .group_by(Payment.patient_id)
         .subquery()
     )
+    # "Last appointment" means the most recent *scheduled visit time*, which
+    # lives on AppointmentService.start -- NOT Appointment.created_date
+    # (when the booking record was entered into the system, an
+    # administrative timestamp that can be, and often is, wildly different
+    # from when the visit itself is/was scheduled). Using created_date here
+    # was a real bug: it could show a "last appointment" date that has
+    # nothing to do with when the patient was actually last scheduled to be
+    # seen. See get_patient_detail for the same fix applied there.
     last_appointment = (
-        select(Appointment.patient_id, func.max(Appointment.created_date).label("last_appointment_date"))
+        select(Appointment.patient_id, func.max(AppointmentService.start).label("last_appointment_date"))
+        .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
         .group_by(Appointment.patient_id)
         .subquery()
     )
@@ -195,13 +199,15 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
 
     Unlike `list_patients` (aggregate-only, computed across ~4,000 patients
     at once), this loads full detail for a single patient: every
-    appointment (most recent first), every service performed within each
-    one (with its provider and time window, via `AppointmentService`), and
-    the payment tied to each appointment, if any, plus the adjacent
-    patient ids (in the default name-sorted order) for Previous/Next
-    navigation. This is the data that powers the "click a patient row for
-    more info" Patient Detail page — the raw appointment/service/provider/
-    payment records were previously only ever touched in aggregate by the
+    appointment (ordered by its actual scheduled visit date, most recent
+    first -- see `AppointmentDetail.appointment_date`, NOT by when the
+    booking record was created), every service performed within each one
+    (with its provider and time window, via `AppointmentService`), and the
+    payment tied to each appointment, if any, plus the adjacent patient
+    ids (in the default name-sorted order) for Previous/Next navigation.
+    This is the data that powers the "click a patient row for more info"
+    Patient Detail page — the raw appointment/service/provider/payment
+    records were previously only ever touched in aggregate by the
     analytics queries, never surfaced per-patient.
 
     A payment maps to at most one appointment in the real seed data
@@ -223,12 +229,21 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
         select(func.coalesce(func.sum(Payment.amount), 0))
         .where(Payment.patient_id == patient_id, Payment.status == "paid")
     )).scalar_one()
+    # The most recent *scheduled visit time* -- AppointmentService.start,
+    # not Appointment.created_date (see list_patients for the full
+    # explanation of why created_date is the wrong column here).
     last_appointment_date = (await db.execute(
-        select(func.max(Appointment.created_date)).where(Appointment.patient_id == patient_id)
+        select(func.max(AppointmentService.start))
+        .join(Appointment, Appointment.id == AppointmentService.appointment_id)
+        .where(Appointment.patient_id == patient_id)
     )).scalar_one()
 
+    # Fetched in no particular SQL order -- each appointment's actual
+    # display/sort date (`appointment_date` below) depends on its services,
+    # which aren't known until after this query, so the final chronological
+    # ordering happens in Python once that's computed.
     appointments = (await db.execute(
-        select(Appointment).where(Appointment.patient_id == patient_id).order_by(Appointment.created_date.desc())
+        select(Appointment).where(Appointment.patient_id == patient_id)
     )).scalars().all()
     appointment_ids = [appointment.id for appointment in appointments]
 
@@ -259,9 +274,20 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
         )).scalars().all()
         payment_by_appointment = {payment.appointment_id: payment for payment in payments}
 
+    def _appointment_date(appointment_id: str) -> datetime | None:
+        """The appointment's actual scheduled visit date (earliest service start), or None
+        if it has no AppointmentService rows yet -- NOT created_date, which is merely when
+        the booking record was entered and can be entirely unrelated to when the visit is
+        scheduled (this was a real bug: a patient's appointment could be booked in January
+        for a visit the following January, and the old code showed the booking date).
+        """
+        services = services_by_appointment.get(appointment_id)
+        return min((service.start for service in services), default=None) if services else None
+
     appointment_items = [
         AppointmentDetail(
-            id=appointment.id, status=appointment.status, created_date=appointment.created_date,
+            id=appointment.id, status=appointment.status,
+            appointment_date=_appointment_date(appointment.id), created_date=appointment.created_date,
             services=services_by_appointment.get(appointment.id, []),
             payment=(
                 PaymentSummary(
@@ -275,6 +301,10 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
         )
         for appointment in appointments
     ]
+    # Most recent scheduled visit first. An appointment with no services yet
+    # (appointment_date=None) has nothing to sort by chronologically, so it
+    # sorts last rather than crowding out real dates at the top.
+    appointment_items.sort(key=lambda item: item.appointment_date or datetime.min, reverse=True)
 
     # Previous/Next patient, in the same (last_name, first_name, id) order
     # the Patient Table sorts by default -- a stable global ordering, not
@@ -321,17 +351,30 @@ async def _get_upcoming_reference_now(db: AsyncSession) -> datetime:
     this view permanently, silently empty against this snapshot -- not a
     bug exactly, but a useless one.
 
-    Instead, "today" is computed as a fixed offset before the latest
-    appointment time actually present in the data, so the view stays
-    meaningfully populated regardless of when it's viewed. This is a
-    deliberate accommodation for static seed/demo data; against a live
-    production database (where new appointments keep getting scheduled
-    into the real future), this should simply be `datetime.utcnow()`.
+    "Today" is instead the first of the month, for the second-to-last
+    calendar month that has any scheduled appointment in the data. This
+    isn't an arbitrary rule: booking volume in this dataset falls off a
+    cliff exactly at that boundary (1,590 appointments in the month
+    before it, ~145-150 in each of the two months after) -- the strong
+    signature of this being roughly where the dataset was actually
+    generated, with everything after being the sparser set of
+    appointments that had already been booked ahead of that date at
+    generation time. Landing "today" there, rather than on some
+    in-between day, also gives a clean, human-legible anchor (the 1st of
+    a month) instead of a date that drifts to something arbitrary-looking
+    depending on exactly where in the data it falls. Against a live
+    production database (new appointments keep getting scheduled into the
+    real future), this should simply be `datetime.utcnow()`.
     """
-    max_start = (await db.execute(select(func.max(AppointmentService.start)))).scalar_one()
-    if max_start is None:
+    month_start = func.date_trunc("month", AppointmentService.start)
+    latest_two_months = (await db.execute(
+        select(month_start).distinct().order_by(month_start.desc()).limit(2)
+    )).scalars().all()
+    if not latest_two_months:
         return datetime.utcnow()
-    return max_start - timedelta(days=UPCOMING_REFERENCE_OFFSET_DAYS)
+    if len(latest_two_months) == 1:
+        return latest_two_months[0]  # only one month of data exists at all
+    return latest_two_months[1]  # index 0 is the latest month; 1 is the one before it
 
 
 async def list_upcoming_appointments(
@@ -341,31 +384,14 @@ async def list_upcoming_appointments(
 
     One row per patient (their single *soonest* non-cancelled appointment
     on or after the reference "today" -- see `_get_upcoming_reference_now`),
-    sorted soonest-first, with two follow-up signals a front desk agent
-    would actually triage by:
-
-    - `needs_confirmation`: that soonest appointment falls on the
-      reference "today" itself and is still "pending" -- something to
-      call and confirm today.
-    - `has_unpaid_appointment`: this patient has *any* past, non-cancelled
-      appointment with no `Payment` row at all. This is checked instead
-      of a "failed" payment status because the real seed data has zero
-      failed/pending payments (all 5,311 are "paid") -- a failed-status
-      check would never fire. 689 of the 6,000 appointments have no
-      payment record at all, which is the actual, populated billing gap
-      worth surfacing.
+    sorted soonest-first.
     """
+    # `_get_upcoming_reference_now` returns a `date_trunc('month', ...)`
+    # result, which Postgres always normalizes to midnight on day 1 of that
+    # month -- already exactly the start of the reference day, no separate
+    # "start of day" step needed here.
     reference_now = await _get_upcoming_reference_now(db)
-    # The "upcoming vs. past" dividing line is the *start of the reference
-    # day*, not the exact `reference_now` timestamp. `reference_now` carries
-    # whatever arbitrary time-of-day happened to come from the data it was
-    # derived from (see `_get_upcoming_reference_now`) -- comparing against
-    # it directly would silently exclude a same-day appointment scheduled
-    # earlier that day (e.g. a 9am appointment when reference_now's time
-    # component is 12:15pm), even though it's still "today" and exactly the
-    # kind of thing `needs_confirmation` exists to catch.
     reference_date = reference_now.date()
-    reference_start_of_day = datetime.combine(reference_date, time.min)
 
     # Each non-cancelled appointment's earliest service start time (an
     # appointment itself has no date/time of its own -- see
@@ -384,8 +410,8 @@ async def list_upcoming_appointments(
         .subquery()
     )
 
-    # Of each patient's upcoming (>= start of the reference day) appointments,
-    # keep only the soonest one -- a patient with several upcoming bookings
+    # Of each patient's upcoming (>= the reference date) appointments, keep
+    # only the soonest one -- a patient with several upcoming bookings
     # should appear once, for their next one.
     upcoming = (
         select(
@@ -394,30 +420,14 @@ async def list_upcoming_appointments(
                 partition_by=appointment_starts.c.patient_id, order_by=appointment_starts.c.start.asc(),
             ).label("rn"),
         )
-        .where(appointment_starts.c.start >= reference_start_of_day)
+        .where(appointment_starts.c.start >= reference_now)
         .subquery()
     )
     soonest_upcoming = select(upcoming).where(upcoming.c.rn == 1).subquery()
 
-    # Patients with at least one past (before the reference day),
-    # non-cancelled appointment that has no Payment row at all -- see
-    # docstring above for why this is the meaningful "unpaid" signal in
-    # this dataset.
-    unpaid_patients = (
-        select(appointment_starts.c.patient_id)
-        .outerjoin(Payment, Payment.appointment_id == appointment_starts.c.appointment_id)
-        .where(appointment_starts.c.start < reference_start_of_day, Payment.id.is_(None))
-        .distinct()
-        .subquery()
-    )
-
     query = (
-        select(
-            Patient, soonest_upcoming.c.start, soonest_upcoming.c.status,
-            unpaid_patients.c.patient_id.isnot(None).label("has_unpaid_appointment"),
-        )
+        select(Patient, soonest_upcoming.c.start, soonest_upcoming.c.status)
         .join(soonest_upcoming, soonest_upcoming.c.patient_id == Patient.id)
-        .outerjoin(unpaid_patients, unpaid_patients.c.patient_id == Patient.id)
         .order_by(soonest_upcoming.c.start.asc())
     )
 
@@ -430,10 +440,8 @@ async def list_upcoming_appointments(
             id=patient.id, first_name=patient.first_name, last_name=patient.last_name,
             date_of_birth=patient.date_of_birth.date(), phone=patient.phone, email=patient.email,
             upcoming_appointment_date=appointment_start, appointment_status=status,
-            needs_confirmation=(appointment_start.date() == reference_date and status == "pending"),
-            has_unpaid_appointment=bool(has_unpaid_appointment),
         )
-        for patient, appointment_start, status, has_unpaid_appointment in rows
+        for patient, appointment_start, status in rows
     ]
 
     return UpcomingAppointmentsResponse(
