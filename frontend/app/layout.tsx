@@ -120,12 +120,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             extra whitespace.
           */}
           {/*
-            `pt-10` (not the same `py-6` the bottom keeps) -- the sticky nav
-            sits close above this, and the previous even top/bottom padding
-            left barely any breathing room between the nav's own bottom
-            edge and the page's first heading, reported as visibly cramped.
+            `pt-[60px]` (not the same `py-6` the bottom keeps) -- the sticky
+            nav sits close above this, and even top/bottom padding left
+            barely any breathing room between the nav's own bottom edge and
+            the page's first heading, reported as visibly cramped. Bumped
+            again (from `pt-10`/40px to 60px, 1.5x) per follow-up feedback
+            that it still read as too tight.
           */}
-          <main className="mx-auto max-w-5xl px-3 pb-6 pt-10 lg:px-8 2xl:max-w-7xl">{children}</main>
+          <main className="mx-auto max-w-5xl px-3 pb-6 pt-[60px] lg:px-8 2xl:max-w-7xl">{children}</main>
         </Providers>
       </body>
     </html>

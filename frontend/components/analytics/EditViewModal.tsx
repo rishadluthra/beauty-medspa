@@ -18,8 +18,8 @@
  *  - `"view"`: every row (default or custom) gets a remove control (only
  *    from this view's own list -- the underlying graph is untouched), a
  *    "+ Add Graphs" button opens `GraphPickerModal` in `"add"` mode to
- *    bring in more, and a "Delete This View" control removes the whole
- *    view (replacing what used to be a separate page-level button).
+ *    bring in more, and a "Delete View" control removes the whole view
+ *    (replacing what used to be a separate page-level button).
  *  Everything here -- reordering, removals, additions -- is staged in
  *  local state and only actually saved when "Save Changes" is clicked.
  */
@@ -154,28 +154,36 @@ export function EditViewModal({
             </SortableContext>
           </DndContext>
 
-          <div className="mt-4 flex shrink-0 items-center justify-between gap-2">
-            {mode === "view" ? (
-              confirmingDeleteView ? (
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-brand-dark/60">Delete this entire view?</span>
-                  <button
-                    type="button"
-                    disabled={isDeletingView}
-                    onClick={onDeleteView}
-                    className="rounded-full border border-coral px-3 py-1 text-coral transition-colors hover:bg-coral hover:text-white disabled:opacity-50"
-                  >
-                    {isDeletingView ? "…" : "Yes, delete"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDeleteView(false)}
-                    className="rounded-full border border-brand-dark/20 px-3 py-1 text-brand-dark/70 transition-colors hover:border-brand-gold"
-                  >
-                    No
-                  </button>
-                </div>
-              ) : (
+          {/*
+            When confirming the delete, the footer shows ONLY two buttons --
+            Confirm (solid red) and Cancel (plain grey) -- not the delete
+            confirm pair ALONGSIDE the still-visible Cancel/Save row underneath
+            them. Per direct feedback, that combined 4-button, two-line-text
+            layout ("Yes, delete" / "Save Changes" both wrapped) was "awful."
+            Cancel here backs out of the delete confirmation only, back to the
+            normal footer -- it does not close the whole modal.
+          */}
+          {mode === "view" && confirmingDeleteView ? (
+            <div className="mt-4 flex shrink-0 justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingDeleteView(false)}
+                className="rounded-full border border-brand-dark/20 px-4 py-1.5 text-sm text-brand-dark/70 transition-colors hover:border-brand-gold hover:text-brand-gold-dark"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingView}
+                onClick={onDeleteView}
+                className="rounded-full bg-coral px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-coral/90 disabled:opacity-50"
+              >
+                {isDeletingView ? "…" : "Confirm"}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-4 flex shrink-0 items-center justify-between gap-2">
+              {mode === "view" ? (
                 // A real button, not bare text -- red-tinted frosted glass
                 // (matching the app's translucent menu-bar treatment, tinted
                 // toward `coral` instead of the neutral/gold used elsewhere)
@@ -185,31 +193,31 @@ export function EditViewModal({
                   onClick={() => setConfirmingDeleteView(true)}
                   className="rounded-full border border-coral bg-coral/20 px-4 py-1.5 text-sm font-medium text-coral shadow-lg shadow-coral/20 backdrop-blur-xl transition-colors hover:bg-coral/30"
                 >
-                  Delete This View
+                  Delete View
                 </button>
-              )
-            ) : (
-              <span />
-            )}
+              ) : (
+                <span />
+              )}
 
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-full border border-brand-dark/20 px-4 py-1.5 text-sm text-brand-dark/70 transition-colors hover:border-brand-gold hover:text-brand-gold-dark"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isSaving || items.length === 0}
-                onClick={() => onSave(items.map((i) => i.ref))}
-                className="rounded-full bg-brand-gold px-4 py-1.5 text-sm font-medium text-brand-dark transition-colors hover:bg-brand-gold-dark disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSaving ? "Saving…" : "Save Changes"}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-full border border-brand-dark/20 px-4 py-1.5 text-sm text-brand-dark/70 transition-colors hover:border-brand-gold hover:text-brand-gold-dark"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSaving || items.length === 0}
+                  onClick={() => onSave(items.map((i) => i.ref))}
+                  className="rounded-full bg-brand-gold px-4 py-1.5 text-sm font-medium text-brand-dark transition-colors hover:bg-brand-gold-dark disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSaving ? "Saving…" : "Save"}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

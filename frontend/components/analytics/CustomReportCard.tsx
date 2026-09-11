@@ -94,13 +94,19 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
   const yAxisWidth = estimateAxisWidth([formatValue(maxValue)]);
   const chartHeight = 320;
 
-  // The tooltip is pinned to the plot's own top-right corner (where the
-  // Legend used to live, before it moved to the table below) rather than
-  // following the cursor -- Recharts' `position` prop takes pixel offsets
-  // in the chart's own coordinate space, so pinning it to the RIGHT edge
-  // needs the actual rendered width, measured here via ResizeObserver
-  // (a `width="100%"` ResponsiveContainer's pixel width isn't known
-  // ahead of render).
+  // The tooltip's position is computed from the actual cursor, not left to
+  // Recharts' own default cursor-tracking, for two reasons discovered live:
+  // (1) a fixed pin (tried in an earlier round) covered whatever data was
+  // being hovered whenever the cursor happened to be near that pin: worst
+  // when inspecting the most recent months, since the pin sat there
+  // permanently. (2) Recharts' own default tracking still grew a tall
+  // (up to 10-row) tooltip DOWNWARD from wherever the cursor's Y was,
+  // which spilled past the chart's own height into the Legend grid below
+  // it whenever the cursor wasn't already near the very top -- confirmed
+  // live via a real hover screenshot, not guessed. Pinning Y near the top
+  // (so the content only ever grows into the plot's own space) while
+  // still flipping X to whichever side of the cursor has more room (so it
+  // never covers the exact point being inspected) solves both at once.
   const containerRef = useRef<HTMLDivElement>(null);
   const [chartWidth, setChartWidth] = useState(0);
   useEffect(() => {
@@ -109,7 +115,10 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
-  const tooltipX = Math.max(20, chartWidth - 240);
+  const [hoverX, setHoverX] = useState<number | null>(null);
+  const tooltipPosition = hoverX === null
+    ? undefined
+    : { x: hoverX > chartWidth / 2 ? Math.max(8, hoverX - 232) : hoverX + 24, y: 4 };
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
@@ -124,13 +133,21 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
         <>
           <div ref={containerRef}>
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <LineChart data={rows} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+              <LineChart
+                data={rows}
+                margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+                onMouseMove={(state) => {
+                  if (state?.activeCoordinate) setHoverX(state.activeCoordinate.x);
+                }}
+                onMouseLeave={() => setHoverX(null)}
+              >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="period" tickMargin={8} />
                 <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => formatValue(v as number)} />
                 <Tooltip
                   content={<GlassTooltip formatValue={formatValue} />}
-                  position={{ x: tooltipX, y: 4 }}
+                  position={tooltipPosition}
+                  allowEscapeViewBox={{ x: true, y: true }}
                   wrapperStyle={{ zIndex: 30 }}
                 />
                 {seriesNames.map((name, i) => (
@@ -160,20 +177,30 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
             A responsive grid (2 columns on mobile, up to 4 on wider
             screens) rather than a fixed-column HTML `<table>` -- a fixed
             4 columns overflowed a 390px mobile card, truncating names
-            like "Barry Snyder" to "Barry Sn". Each cell is just a color
-            swatch + name (matching what Recharts' legend items showed,
-            minus the wrapping/ordering issues).
+            like "Barry Snyder" to "Barry Sn". Each swatch is a short LINE
+            segment (solid or dashed, matching that series' actual stroke),
+            not a plain color dot -- per direct feedback that the legend
+            "match the color but not the line style" for the dashed series
+            past the 7-color palette cycle.
           */}
           <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3 md:grid-cols-4">
-            {seriesNames.map((name, i) => (
-              <div key={name} className="flex items-center gap-1.5 overflow-hidden">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length] }}
-                />
-                <span className="truncate text-brand-dark/80">{name}</span>
-              </div>
-            ))}
+            {seriesNames.map((name, i) => {
+              const color = CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length];
+              const isDashed = i >= CATEGORICAL_PALETTE.length;
+              return (
+                <div key={name} className="flex items-center gap-1.5 overflow-hidden">
+                  <svg width="16" height="8" className="shrink-0" aria-hidden="true">
+                    <line
+                      x1="0" y1="4" x2="16" y2="4"
+                      stroke={color}
+                      strokeWidth={2}
+                      strokeDasharray={isDashed ? "3 2" : undefined}
+                    />
+                  </svg>
+                  <span className="truncate text-brand-dark/80">{name}</span>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
