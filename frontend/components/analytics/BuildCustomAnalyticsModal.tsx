@@ -18,7 +18,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import type { CustomReportDimension, CustomReportMetric, CustomReportTimeGrain } from "@/lib/types";
+import type { CustomReport, CustomReportDimension, CustomReportMetric, CustomReportTimeGrain } from "@/lib/types";
 
 const METRIC_OPTIONS: { value: CustomReportMetric; label: string }[] = [
   { value: "appointment_count", label: "Appointment Count" },
@@ -51,10 +51,12 @@ function FieldLabel({ children }: { children: string }) {
 
 interface Props {
   onClose: () => void;
-  /** Called (in addition to closing) once the report is successfully saved, so the page can show a confirmation. */
-  onCreated: () => void;
+  /** Called (in addition to closing) once the report is successfully saved, with the new report -- so the page can show a confirmation, and `CreateCustomViewModal` can auto-select it. */
+  onCreated: (report: CustomReport) => void;
   /** Called when the save fails, so the page can show a confirmation alongside the inline error below. */
   onFailed: () => void;
+  /** True when rendered inside another modal (the "Create Custom View" picker's inline "+ New Graph" flow) -- bumps this modal's own overlay above the picker's instead of z-fighting with it. */
+  nested?: boolean;
 }
 
 /**
@@ -62,7 +64,7 @@ interface Props {
  * `BuildCustomAnalyticsButton` only while open, so this component's state
  * always starts fresh -- no reset-on-close logic needed.
  */
-export function BuildCustomAnalyticsModal({ onClose, onCreated, onFailed }: Props) {
+export function BuildCustomAnalyticsModal({ onClose, onCreated, onFailed, nested = false }: Props) {
   const [title, setTitle] = useState("");
   const [metric, setMetric] = useState<CustomReportMetric>("revenue_cents");
   const [dimension, setDimension] = useState<CustomReportDimension>("provider");
@@ -71,9 +73,10 @@ export function BuildCustomAnalyticsModal({ onClose, onCreated, onFailed }: Prop
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: () => api.createCustomReport({ title: title.trim(), metric, dimension, time_grain: timeGrain }),
-    onSuccess: () => {
+    onSuccess: (report) => {
       queryClient.invalidateQueries({ queryKey: ["custom-reports"] });
-      onCreated();
+      queryClient.invalidateQueries({ queryKey: ["graph-order"] });
+      onCreated(report);
       onClose();
     },
     onError: () => onFailed(),
@@ -82,7 +85,7 @@ export function BuildCustomAnalyticsModal({ onClose, onCreated, onFailed }: Prop
   return (
     // The overlay itself closes the modal on click; the panel stops that click from
     // bubbling up, so clicking inside the form doesn't also dismiss it.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className={`fixed inset-0 ${nested ? "z-[60]" : "z-50"} flex items-center justify-center bg-black/40 p-4`} onClick={onClose}>
       <div
         className="w-full max-w-md rounded-2xl border border-brand-gold/10 bg-brand-bg p-6 text-brand-dark shadow-xl"
         onClick={(e) => e.stopPropagation()}

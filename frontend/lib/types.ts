@@ -376,3 +376,20 @@ export interface CustomReport {
   created_date: string;
   data: CustomReportPoint[];
 }
+
+/**
+ * The "All Graphs" tab's current display order: an ordered list of chart
+ * refs, each either `"default:<key>"` (see `lib/defaultCharts.tsx`) or
+ * `"custom:<report_id>"`. See `GET/PUT /api/graph-order`.
+ */
+export interface GraphOrder {
+  chart_refs: string[];
+}
+
+/** A saved custom view: a named, ordered list of chart refs (same shape as {@link GraphOrder}'s list). See `/api/custom-views`. */
+export interface CustomView {
+  id: string;
+  name: string;
+  chart_refs: string[];
+  created_date: string;
+}

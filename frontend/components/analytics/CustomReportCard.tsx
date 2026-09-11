@@ -30,6 +30,8 @@ import { CATEGORICAL_PALETTE } from "@/lib/chartColors";
 import { formatLabel } from "@/lib/format";
 import type { CustomReport } from "@/lib/types";
 
+import { GraphBadge } from "./GraphBadge";
+
 /** Pivots a report's flat point list into one row per period, with one column per dimension value. */
 function pivot(report: CustomReport): { rows: Record<string, string | number>[]; seriesNames: string[] } {
   // `source`/`gender` dimension values come straight from the backend's raw
@@ -64,9 +66,19 @@ interface Props {
   onDeleted: () => void;
   /** Called if the delete request fails. */
   onDeleteFailed: () => void;
+  /**
+   * Whether to show the (global, irreversible) delete-this-graph control.
+   * `true` on the "All Graphs" tab, where deleting really does remove the
+   * graph everywhere. `false` inside a custom view -- removing a graph
+   * from a curated view is a "remove from this view" action instead
+   * (handled by that view's reorder modal), not a global delete, so this
+   * button is hidden there to avoid a destructive action reachable from a
+   * context that looks merely like curation.
+   */
+  showDeleteButton?: boolean;
 }
 
-export function CustomReportCard({ report, onDeleted, onDeleteFailed }: Props) {
+export function CustomReportCard({ report, onDeleted, onDeleteFailed, showDeleteButton = true }: Props) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const queryClient = useQueryClient();
   const deleteMutation = useMutation({
@@ -88,8 +100,11 @@ export function CustomReportCard({ report, onDeleted, onDeleteFailed }: Props) {
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <div className="mb-4 flex items-start justify-between gap-3">
-        <h2 className="font-medium text-brand-dark">{report.title}</h2>
-        {confirmingDelete ? (
+        <div className="flex items-center gap-2">
+          <h2 className="font-medium text-brand-dark">{report.title}</h2>
+          <GraphBadge isDefault={false} />
+        </div>
+        {!showDeleteButton ? null : confirmingDelete ? (
           <div className="flex shrink-0 items-center gap-1 text-xs">
             <span className="text-brand-dark/60">Delete?</span>
             <button

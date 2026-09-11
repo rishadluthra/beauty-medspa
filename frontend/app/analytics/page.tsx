@@ -2,14 +2,13 @@
 
 /**
  * Analytics Dashboard page (`/analytics`) — the second of the two pages
- * required by the spec. Composes a row of top-line KPI cards (fetched here,
- * via `api.getOverview`) together with every analytics chart component.
- *
- * Each chart component (RevenueChart, SourceBreakdownChart, etc.) fetches
- * its own data independently via its own `useQuery` call rather than
- * receiving data as props from this page. That means one chart's slow
- * query or fetch error doesn't block or break the others — each section of
- * the dashboard loads and fails independently.
+ * required by the spec. The KPI row is fetched here (via `api.getOverview`)
+ * and always shown, regardless of tab. Below it sits the tab bar: "All
+ * Graphs" (every default chart + every saved custom report, badged, in a
+ * persisted, manually-reorderable order) plus up to 3 saved custom views
+ * (named, curated, independently-ordered subsets of the same pool of
+ * graphs) -- see `lib/chartRefs.ts` for how a "default:<key>"/
+ * "custom:<report_id>" ref resolves to something renderable.
  *
  * Three things that used to be here were removed, not just visually
  * demoted:
@@ -25,29 +24,33 @@
  *    single-color circle.
  *  - The Appointment Status pie chart, per direct request.
  *  For both charts, the backend endpoint/repository function was left in
- *  place (only the dead frontend chart + its now-unused API client method
- *  were removed) -- still a live, tested, reusable query worth keeping for
- *  a future AI/NL-query consumer even with no chart currently on top of it.
+ *  place -- still a live, tested, reusable query worth keeping for a
+ *  future AI/NL-query consumer even with no chart currently on top of it.
  */
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { AnalyticsTabBar } from "@/components/analytics/AnalyticsTabBar";
 import { BuildCustomAnalyticsModal } from "@/components/analytics/BuildCustomAnalyticsModal";
+import { CreateCustomViewModal } from "@/components/analytics/CreateCustomViewModal";
 import { CustomReportCard } from "@/components/analytics/CustomReportCard";
-import { DemographicsChart } from "@/components/analytics/DemographicsChart";
+import { DefaultChartSlot } from "@/components/analytics/DefaultChartSlot";
 import { KpiCard } from "@/components/analytics/KpiCard";
-import { ProviderUtilizationChart } from "@/components/analytics/ProviderUtilizationChart";
-import { RevenueChart } from "@/components/analytics/RevenueChart";
-import { SourceBreakdownChart } from "@/components/analytics/SourceBreakdownChart";
+import { ReorderModal } from "@/components/analytics/ReorderModal";
 import { Toast } from "@/components/analytics/Toast";
-import { TopServicesChart } from "@/components/analytics/TopServicesChart";
-import { TopServicesRevenueChart } from "@/components/analytics/TopServicesRevenueChart";
 import { api } from "@/lib/api";
+import { resolveChartRef } from "@/lib/chartRefs";
+import { getDefaultChart } from "@/lib/defaultCharts";
 import { formatCents } from "@/lib/format";
+import { MAX_CUSTOM_VIEWS } from "@/lib/customViews";
+
+const ALL_GRAPHS_TAB = "all";
 
 /** Top-level route component for `/analytics`. */
 export default function AnalyticsPage() {
+  const queryClient = useQueryClient();
+
   // KPI summary is fetched here (rather than inside a child component)
   // since it feeds the row of KpiCards rendered directly by this page.
   const { data: overview, isLoading, isError } = useQuery({
@@ -55,32 +58,78 @@ export default function AnalyticsPage() {
     queryFn: api.getOverview,
   });
 
+  const { data: customReports } = useQuery({ queryKey: ["custom-reports"], queryFn: api.getCustomReports });
+  const { data: graphOrder } = useQuery({ queryKey: ["graph-order"], queryFn: api.getGraphOrder });
+  const { data: customViews } = useQuery({ queryKey: ["custom-views"], queryFn: api.getCustomViews });
+
+  const [activeTab, setActiveTab] = useState<string>(ALL_GRAPHS_TAB);
   const [isBuildModalOpen, setBuildModalOpen] = useState(false);
+  const [isCreateViewModalOpen, setCreateViewModalOpen] = useState(false);
+  const [isReorderOpen, setReorderOpen] = useState(false);
+  const [confirmingDeleteView, setConfirmingDeleteView] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
-  const { data: customReports } = useQuery({
-    queryKey: ["custom-reports"],
-    queryFn: api.getCustomReports,
+
+  const activeView = activeTab === ALL_GRAPHS_TAB ? undefined : customViews?.find((v) => v.id === activeTab);
+  const activeRefs = activeTab === ALL_GRAPHS_TAB ? (graphOrder?.chart_refs ?? []) : (activeView?.chart_refs ?? []);
+  const resolvedItems = customReports
+    ? activeRefs.map((ref) => resolveChartRef(ref, customReports)).filter((item): item is NonNullable<typeof item> => item !== null)
+    : [];
+
+  const reorderMutation = useMutation({
+    mutationFn: (refs: string[]) =>
+      activeTab === ALL_GRAPHS_TAB ? api.setGraphOrder(refs) : api.updateCustomView(activeTab, refs),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: activeTab === ALL_GRAPHS_TAB ? ["graph-order"] : ["custom-views"] });
+      setReorderOpen(false);
+    },
   });
+
+  const deleteViewMutation = useMutation({
+    mutationFn: () => api.deleteCustomView(activeTab),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["custom-views"] });
+      setToast({ message: "Custom view deleted", variant: "success" });
+      setActiveTab(ALL_GRAPHS_TAB);
+      setConfirmingDeleteView(false);
+    },
+    onError: () => setToast({ message: "Failed to delete custom view", variant: "error" }),
+  });
+
+  const tabs = [
+    { key: ALL_GRAPHS_TAB, label: "All Graphs" },
+    ...(customViews ?? []).map((v) => ({ key: v.id, label: v.name })),
+  ];
+  const atViewCap = (customViews?.length ?? 0) >= MAX_CUSTOM_VIEWS;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Analytics</h1>
         {/*
-          Self-serve pivot builder (metric x dimension x time grain) --
-          lets a manager slice the data their own way (e.g. "revenue by
-          provider by month") instead of being limited to the fixed set
-          of charts below. Saved reports are shared across every viewer
-          (this app has no per-user auth), so any report built here is
-          visible to everyone on their next visit to this page.
+          Two ways to build something: a single new graph (the existing
+          metric x dimension x time grain pivot builder), or a whole new
+          curated dashboard tab made of graphs that already exist (or ones
+          created inline, right there in that picker). Saved reports/views
+          are shared across every viewer (this app has no per-user auth).
         */}
-        <button
-          type="button"
-          onClick={() => setBuildModalOpen(true)}
-          className="rounded-full bg-brand-gold px-4 py-1.5 text-sm font-medium text-brand-dark transition-colors hover:bg-brand-gold-dark"
-        >
-          + Build Custom Analytics
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setBuildModalOpen(true)}
+            className="rounded-full bg-brand-gold px-4 py-1.5 text-sm font-medium text-brand-dark transition-colors hover:bg-brand-gold-dark"
+          >
+            + Create New Graph
+          </button>
+          <button
+            type="button"
+            disabled={atViewCap}
+            title={atViewCap ? `You've reached the limit of ${MAX_CUSTOM_VIEWS} custom views.` : undefined}
+            onClick={() => setCreateViewModalOpen(true)}
+            className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-sm font-medium text-brand-bg/80 transition-colors hover:border-brand-gold hover:text-brand-bg disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            + Create Custom View
+          </button>
+        </div>
       </div>
 
       {isBuildModalOpen && (
@@ -90,6 +139,32 @@ export default function AnalyticsPage() {
           onFailed={() => setToast({ message: "Failed to create custom graph", variant: "error" })}
         />
       )}
+
+      {isCreateViewModalOpen && customReports && (
+        <CreateCustomViewModal
+          customReports={customReports}
+          onClose={() => setCreateViewModalOpen(false)}
+          onViewCreated={(view) => {
+            setToast({ message: "Custom view created", variant: "success" });
+            setActiveTab(view.id);
+          }}
+          onViewFailed={() => setToast({ message: "Failed to create custom view", variant: "error" })}
+          onGraphCreated={() => setToast({ message: "Custom graph created", variant: "success" })}
+          onGraphFailed={() => setToast({ message: "Failed to create custom graph", variant: "error" })}
+        />
+      )}
+
+      {isReorderOpen && (
+        <ReorderModal
+          title={activeTab === ALL_GRAPHS_TAB ? "Reorder All Graphs" : `Reorder: ${activeView?.name}`}
+          items={resolvedItems}
+          allowRemove={activeTab !== ALL_GRAPHS_TAB}
+          isSaving={reorderMutation.isPending}
+          onSave={(refs) => reorderMutation.mutate(refs)}
+          onClose={() => setReorderOpen(false)}
+        />
+      )}
+
       {toast && <Toast message={toast.message} variant={toast.variant} onDismiss={() => setToast(null)} />}
 
       {isLoading && <p className="text-brand-bg/70">Loading overview…</p>}
@@ -119,63 +194,75 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <RevenueChart />
-        <SourceBreakdownChart />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <AnalyticsTabBar tabs={tabs} activeKey={activeTab} onSelect={setActiveTab} />
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setReorderOpen(true)}
+            className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-sm font-medium text-brand-bg/80 backdrop-blur-sm transition-colors hover:border-brand-gold hover:text-brand-bg"
+          >
+            Reorder
+          </button>
+          {activeView &&
+            (confirmingDeleteView ? (
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-brand-bg/70">Delete this view?</span>
+                <button
+                  type="button"
+                  disabled={deleteViewMutation.isPending}
+                  onClick={() => deleteViewMutation.mutate()}
+                  className="rounded-full border border-coral px-3 py-1 text-coral transition-colors hover:bg-coral hover:text-white disabled:opacity-50"
+                >
+                  {deleteViewMutation.isPending ? "…" : "Yes"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDeleteView(false)}
+                  className="rounded-full border border-brand-bg/20 px-3 py-1 text-brand-bg/70 transition-colors hover:border-brand-gold"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDeleteView(true)}
+                className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-sm font-medium text-brand-bg/80 backdrop-blur-sm transition-colors hover:border-coral hover:text-coral"
+              >
+                Delete View
+              </button>
+            ))}
+        </div>
       </div>
 
       {/*
-        Paired by similar shape/height (both horizontal bar charts whose
-        height scales with the same ~10-provider/~10-service row count),
-        not by topic -- a tall chart next to a short one would leave one
-        side of the row with a lot of empty space underneath it.
+        Every graph -- default and custom alike -- renders full row width,
+        one per row (not a 2-up grid): this list is drag-reorderable, and a
+        linear stack is what that requires; it also gives every chart the
+        same "more room to breathe" benefit custom reports already got
+        (some have up to 10 series, needing real width for their legend
+        and axis labels to stay readable).
       */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <TopServicesChart />
-        <ProviderUtilizationChart />
-      </div>
-
-      {/*
-        Full width rather than sharing a `md:grid-cols-2` row -- with
-        Appointment Status removed, this was left as the one odd chart out
-        with no natural same-height partner; giving it the full row width
-        instead of leaving an empty, unpaired half-row also means its own
-        (potentially long) service-name labels and dollar-amount bars have
-        more room to breathe.
-      */}
-      <TopServicesRevenueChart />
-
-      <DemographicsChart />
-
-      {/*
-        Custom reports always render last, after every fixed chart --
-        per direct feedback, they were landing visually "in the middle" of
-        the page when placed just before Demographics (still true even
-        though they were already the last *fixed* section in source order),
-        since Demographics itself came after them. Creation order (newest
-        last) so a freshly-built report appears right where the person who
-        just built it is already looking: the very bottom of the page.
-      */}
-      {/*
-        Full row width each, not a 2-up grid like the fixed charts above --
-        per direct feedback, a custom report can have up to 10 series (e.g.
-        one line per provider), and squeezing that into a half-width card
-        left too little room for the legend and axis labels to stay
-        readable. A full row gives each report the width its own line count
-        actually needs.
-      */}
-      {customReports && customReports.length > 0 && (
-        <div className="space-y-4">
-          {customReports.map((report) => (
+      <div className="space-y-4">
+        {resolvedItems.map((item) =>
+          item.isDefault ? (
+            <DefaultChartSlot key={item.ref} chart={getDefaultChart(item.ref.slice("default:".length))!} />
+          ) : (
             <CustomReportCard
-              key={report.id}
-              report={report}
+              key={item.ref}
+              report={item.report!}
+              showDeleteButton={activeTab === ALL_GRAPHS_TAB}
               onDeleted={() => setToast({ message: "Custom graph deleted", variant: "success" })}
               onDeleteFailed={() => setToast({ message: "Failed to delete custom graph", variant: "error" })}
             />
-          ))}
-        </div>
-      )}
+          ),
+        )}
+        {activeTab !== ALL_GRAPHS_TAB && resolvedItems.length === 0 && (
+          <p className="text-brand-bg/70">This view has no graphs left to show. Delete it, or build a new one.</p>
+        )}
+      </div>
     </div>
   );
 }

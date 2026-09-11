@@ -18,7 +18,9 @@ import type {
   CustomReportDimension,
   CustomReportMetric,
   CustomReportTimeGrain,
+  CustomView,
   DemographicsResponse,
+  GraphOrder,
   OverviewStats,
   PatientDetailContext,
   PatientDetailResponse,
@@ -86,6 +88,20 @@ async function apiDelete(path: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`API request failed: ${response.status} ${response.statusText}`);
   }
+}
+
+/** Issues a PUT request with a JSON body -- the "replace this whole ordered list" shape used by reordering. */
+async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? `API request failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json() as Promise<T>;
 }
 
 /** Query/filter/pagination params accepted by `GET /api/patients`. */
@@ -208,6 +224,18 @@ export const api = {
     apiPost<CustomReport>("/api/custom-reports", params),
   /** Deletes a saved custom report. */
   deleteCustomReport: (id: string) => apiDelete(`/api/custom-reports/${encodeURIComponent(id)}`),
+  /** Fetches the "All Graphs" tab's current display order (seeded with the default charts on first read). */
+  getGraphOrder: () => apiGet<GraphOrder>("/api/graph-order"),
+  /** Replaces the "All Graphs" tab's display order (the reorder modal's save action). */
+  setGraphOrder: (chart_refs: string[]) => apiPut<GraphOrder>("/api/graph-order", { chart_refs }),
+  /** Fetches every saved custom view, in tab order. */
+  getCustomViews: () => apiGet<CustomView[]>("/api/custom-views"),
+  /** Saves a new custom view (a named, ordered subset of existing graphs). */
+  createCustomView: (params: { name: string; chart_refs: string[] }) => apiPost<CustomView>("/api/custom-views", params),
+  /** Replaces one view's chart_refs -- reordering within it, or removing an item from it. */
+  updateCustomView: (id: string, chart_refs: string[]) => apiPut<CustomView>(`/api/custom-views/${encodeURIComponent(id)}`, { chart_refs }),
+  /** Deletes a saved custom view. */
+  deleteCustomView: (id: string) => apiDelete(`/api/custom-views/${encodeURIComponent(id)}`),
 };
 
 /**
