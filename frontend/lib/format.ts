@@ -28,10 +28,21 @@ export function formatCents(cents: number): string {
  * vs `12/1/2024`), which looks ragged in a table column; the explicit format
  * (`May 29, 2025`) is unambiguous and visually consistent regardless of the
  * date's numeric width.
+ *
+ * `value` can be either a bare date ("2025-12-14", e.g. `reference_date` or
+ * `date_of_birth`) or a full datetime ("2025-12-14T09:00:00"). These parse
+ * completely differently in JS: a bare date is read as UTC midnight, while a
+ * datetime with no explicit offset is read as LOCAL midnight/time -- so a
+ * bare date fed through `new Date(value)` directly renders one day EARLIER
+ * than intended in any timezone behind UTC (this was a real, reported bug:
+ * clicking "Dec 14" on the Calendar showed "Schedule for Dec 13"). Bare
+ * dates are routed through `parseISODate` (always local midnight) instead;
+ * datetimes keep using `new Date(value)`, which is already correct for them.
  */
 export function formatDate(value: string | null): string {
   if (!value) return "—";
-  return new Date(value).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseISODate(value) : new Date(value);
+  return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 /**
@@ -143,9 +154,14 @@ export function formatMonthLabel(month: string): string {
  * Computes a whole-number age in years from an ISO date-of-birth string,
  * accounting for whether this year's birthday has happened yet (not just
  * a naive year subtraction).
+ *
+ * `dateOfBirth` is always a bare "YYYY-MM-DD" date (never a datetime), so
+ * this always goes through `parseISODate` -- see `formatDate` for why a
+ * bare `new Date(dateOfBirth)` would be off by a day in timezones behind
+ * UTC (this would show the wrong age right around someone's birthday).
  */
 export function calculateAge(dateOfBirth: string): number {
-  const dob = new Date(dateOfBirth);
+  const dob = parseISODate(dateOfBirth);
   const today = new Date();
 
   let age = today.getFullYear() - dob.getFullYear();
