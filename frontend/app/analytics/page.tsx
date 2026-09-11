@@ -156,10 +156,23 @@ export default function AnalyticsPage() {
         last) so a freshly-built report appears right where the person who
         just built it is already looking: the very bottom of the page.
       */}
+      {/*
+        Full row width each, not a 2-up grid like the fixed charts above --
+        per direct feedback, a custom report can have up to 10 series (e.g.
+        one line per provider), and squeezing that into a half-width card
+        left too little room for the legend and axis labels to stay
+        readable. A full row gives each report the width its own line count
+        actually needs.
+      */}
       {customReports && customReports.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-4">
           {customReports.map((report) => (
-            <CustomReportCard key={report.id} report={report} />
+            <CustomReportCard
+              key={report.id}
+              report={report}
+              onDeleted={() => setToast({ message: "Custom graph deleted", variant: "success" })}
+              onDeleteFailed={() => setToast({ message: "Failed to delete custom graph", variant: "error" })}
+            />
           ))}
         </div>
       )}

@@ -57,12 +57,24 @@ function pivot(report: CustomReport): { rows: Record<string, string | number>[];
   return { rows, seriesNames };
 }
 
-export function CustomReportCard({ report }: { report: CustomReport }) {
+interface Props {
+  report: CustomReport;
+  /** Called after a successful delete, so the page can show the same toast confirmation create uses. */
+  onDeleted: () => void;
+  /** Called if the delete request fails. */
+  onDeleteFailed: () => void;
+}
+
+export function CustomReportCard({ report, onDeleted, onDeleteFailed }: Props) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const queryClient = useQueryClient();
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteCustomReport(report.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["custom-reports"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["custom-reports"] });
+      onDeleted();
+    },
+    onError: () => onDeleteFailed(),
   });
 
   const { rows, seriesNames } = useMemo(() => pivot(report), [report]);
@@ -70,13 +82,7 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
   const formatValue = (v: number) => (isRevenue ? `$${v.toLocaleString()}` : v.toLocaleString());
   const maxValue = Math.max(0, ...rows.flatMap((row) => seriesNames.map((s) => Number(row[s]) || 0)));
   const yAxisWidth = estimateAxisWidth([formatValue(maxValue)]);
-  // Grows with series count (up to 10 dimension values, e.g. every provider)
-  // so the plot area has room to keep lines visually separated, AND so the
-  // Tooltip -- which lists every series at the hovered period, one row each
-  // -- has vertical room to render without needing to overlap the Legend
-  // below the chart (see `wrapperStyle` on Tooltip below for the other half
-  // of that fix).
-  const chartHeight = Math.max(280, 220 + seriesNames.length * 16);
+  const chartHeight = 380;
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
@@ -123,20 +129,32 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
             <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => formatValue(v as number)} />
             {/*
               A pinned `position` (rather than Recharts' default of following
-              the cursor) is the actual fix for the tooltip overlapping the
-              Legend -- confirmed live: with up to 10 series, the tooltip's own
-              content (a header row + one row per series) is taller than the
-              gap between the plot and the Legend below it, so a
-              cursor-following tooltip hovering anywhere in the lower half of
-              the chart grew tall enough to visually cover Legend entries
-              regardless of z-index (Recharts computes escape-viewBox clamping
-              against the plot area alone, which doesn't know the Legend's own
-              box exists below it). Pinning the tooltip to the plot's own
-              top-left corner means it only ever grows downward into the
-              plot's empty space, never into the Legend's row.
+              the cursor) keeps the tooltip predictable and clear of the
+              Legend's own column on the right -- it only ever grows downward
+              from the plot's top-left corner into the plot's own space.
             */}
             <Tooltip formatter={(v) => formatValue(v as number)} position={{ x: 50, y: 4 }} wrapperStyle={{ zIndex: 30 }} />
-            <Legend />
+            {/*
+              A vertical legend in its own column on the right -- not
+              Recharts' default horizontal row that wraps below the chart --
+              is what actually fixes "the legend looks unorganized": with up
+              to 10 series, a wrapped horizontal legend produced a ragged,
+              uneven multi-row block with no clear reading order. A single
+              vertical column, one name per line, reads top-to-bottom exactly
+              like the report's own dimension list would in a table. The
+              chart is now full page-width (see the Analytics page's custom-
+              reports section), which is what makes room for this column
+              without shrinking the plot itself. `maxHeight` + `overflowY`
+              caps the column at the chart's own height rather than letting
+              10 rows push the card taller than intended, in case a future
+              dimension ever has more values than fit comfortably.
+            */}
+            <Legend
+              layout="vertical"
+              verticalAlign="middle"
+              align="right"
+              wrapperStyle={{ maxHeight: chartHeight - 32, overflowY: "auto", paddingLeft: 16, lineHeight: "1.9rem" }}
+            />
             {seriesNames.map((name, i) => (
               <Line
                 key={name}
