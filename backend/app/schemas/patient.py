@@ -95,7 +95,11 @@ class PatientDetail(BaseModel):
 
 
 class PatientDetailResponse(BaseModel):
-    """Everything the Patient Detail page needs: the profile plus the full appointment history."""
+    """Everything the Patient Detail page needs: the profile, full appointment history, and the
+    adjacent patients (in the default name-sorted order) for its Previous/Next navigation buttons.
+    """
 
     patient: PatientDetail
     appointments: list[AppointmentDetail]
+    previous_patient_id: str | None
+    next_patient_id: str | None

@@ -10,7 +10,7 @@ service as "tools" over the data.
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Appointment, AppointmentService, Patient, Payment, Provider, Service
@@ -190,11 +190,12 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
     at once), this loads full detail for a single patient: every
     appointment (most recent first), every service performed within each
     one (with its provider and time window, via `AppointmentService`), and
-    the payment tied to each appointment, if any. This is the data that
-    powers the "click a patient row for more info" Patient Detail page —
-    the raw appointment/service/provider/payment records were previously
-    only ever touched in aggregate by the analytics queries, never
-    surfaced per-patient.
+    the payment tied to each appointment, if any, plus the adjacent
+    patient ids (in the default name-sorted order) for Previous/Next
+    navigation. This is the data that powers the "click a patient row for
+    more info" Patient Detail page — the raw appointment/service/provider/
+    payment records were previously only ever touched in aggregate by the
+    analytics queries, never surfaced per-patient.
 
     A payment maps to at most one appointment in the real seed data
     (verified directly against seed_data/payment.json: 5,311 payments,
@@ -268,6 +269,26 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
         for appointment in appointments
     ]
 
+    # Previous/Next patient, in the same (last_name, first_name, id) order
+    # the Patient Table sorts by default -- a stable global ordering, not
+    # tied to whatever filter/sort was active on the table when the user
+    # navigated here, so the buttons behave identically regardless of
+    # entry point (including a direct URL visit). `id` is included in the
+    # ordering key purely as a tie-breaker for patients sharing a full
+    # name, so the ordering (and thus "next"/"previous") is deterministic.
+    current_key = (patient.last_name, patient.first_name, patient.id)
+    order_key = tuple_(Patient.last_name, Patient.first_name, Patient.id)
+    previous_patient_id = (await db.execute(
+        select(Patient.id).where(order_key < current_key)
+        .order_by(Patient.last_name.desc(), Patient.first_name.desc(), Patient.id.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    next_patient_id = (await db.execute(
+        select(Patient.id).where(order_key > current_key)
+        .order_by(Patient.last_name.asc(), Patient.first_name.asc(), Patient.id.asc())
+        .limit(1)
+    )).scalar_one_or_none()
+
     return PatientDetailResponse(
         patient=PatientDetail(
             id=patient.id, first_name=patient.first_name, last_name=patient.last_name,
@@ -277,4 +298,6 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
             total_spent_cents=total_spent_cents,
         ),
         appointments=appointment_items,
+        previous_patient_id=previous_patient_id,
+        next_patient_id=next_patient_id,
     )

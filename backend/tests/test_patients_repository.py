@@ -201,3 +201,28 @@ async def test_get_patient_detail_includes_services_and_payment_per_appointment(
     apt_2 = next(a for a in result.appointments if a.id == "apt_2")
     assert apt_2.services == []
     assert apt_2.payment is None
+
+
+async def test_get_patient_detail_includes_adjacent_patient_ids_for_navigation(db_session):
+    """previous_patient_id/next_patient_id are the neighbors in (last_name, first_name) order --
+    the same default ordering the Patient Table sorts by -- regardless of insertion order,
+    powering the Patient Detail page's Previous/Next buttons.
+    """
+    db_session.add_all([
+        make_patient(id="pat_carter", first_name="Carol", last_name="Carter"),
+        make_patient(id="pat_anderson", first_name="Alice", last_name="Anderson"),
+        make_patient(id="pat_baker", first_name="Bob", last_name="Baker"),
+    ])
+    await db_session.commit()
+
+    middle = await get_patient_detail(db_session, "pat_baker")
+    assert middle.previous_patient_id == "pat_anderson"
+    assert middle.next_patient_id == "pat_carter"
+
+    first = await get_patient_detail(db_session, "pat_anderson")
+    assert first.previous_patient_id is None
+    assert first.next_patient_id == "pat_baker"
+
+    last = await get_patient_detail(db_session, "pat_carter")
+    assert last.previous_patient_id == "pat_baker"
+    assert last.next_patient_id is None

@@ -11,7 +11,7 @@
  */
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
@@ -93,6 +93,7 @@ const CalendarIcon = () => (
 /** Top-level route component for `/patients/[id]`. */
 export default function PatientDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const patientId = params.id;
 
   const { data, isLoading, isError } = useQuery({
@@ -104,12 +105,44 @@ export default function PatientDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/patients"
-        className="inline-flex items-center gap-1 text-sm text-brand-bg/70 transition-colors hover:text-brand-gold-dark"
-      >
-        ← Back to Patients
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href="/patients"
+          className="inline-flex items-center gap-1 text-sm text-brand-bg/70 transition-colors hover:text-brand-gold-dark"
+        >
+          ← Back to Patients
+        </Link>
+
+        {/*
+          Previous/Next walk the same (last_name, first_name) order the
+          Patient Table sorts by default — a stable ordering independent
+          of whatever filter/sort was active when the user navigated in,
+          computed server-side in the same request as the rest of this
+          page's data (no extra round-trip). Disabled rather than hidden
+          at either end of that ordering, so the control stays in a
+          predictable place instead of the layout shifting.
+        */}
+        {data && (
+          <div className="flex gap-2 text-sm">
+            <button
+              type="button"
+              disabled={!data.previous_patient_id}
+              onClick={() => data.previous_patient_id && router.push(`/patients/${data.previous_patient_id}`)}
+              className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
+            >
+              ← Previous
+            </button>
+            <button
+              type="button"
+              disabled={!data.next_patient_id}
+              onClick={() => data.next_patient_id && router.push(`/patients/${data.next_patient_id}`)}
+              className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
+            >
+              Next →
+            </button>
+          </div>
+        )}
+      </div>
 
       {isLoading && <p className="text-brand-bg/70">Loading patient…</p>}
       {isError && <p className="text-coral">Could not load this patient. Please try again.</p>}

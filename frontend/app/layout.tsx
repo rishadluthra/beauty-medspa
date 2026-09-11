@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             pages instead of scrolling away with the content.
           */}
           <div className="sticky top-3 z-50 px-3 lg:top-4 lg:px-8">
-            <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-brand-gold/10 bg-brand-bg/80 px-6 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl">
+            <nav className="mx-auto flex max-w-5xl items-center justify-between rounded-full border border-brand-gold/10 bg-brand-bg/80 px-6 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl">
               <span className="text-lg font-bold tracking-tight">Beauty Med Spa</span>
               <div className="flex gap-8">
                 <Link
@@ -50,13 +50,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </nav>
           </div>
           {/*
-            Capped at the same `max-w-7xl` as the nav above, so page
+            Capped at the same `max-w-5xl` as the nav above, so page
             content lines up under it instead of stretching edge-to-edge
             on wide monitors — without this, a table with only a handful
             of short-text columns spreads them across the full viewport
-            width with huge, uneven gaps between them.
+            width with huge, uneven gaps between them. `max-w-5xl` (not the
+            wider `7xl` this used briefly) is deliberately narrow enough
+            that the nav's own pill doesn't look oversized/sparse relative
+            to the content sitting under it.
           */}
-          <main className="mx-auto max-w-7xl px-3 py-6 lg:px-8">{children}</main>
+          <main className="mx-auto max-w-5xl px-3 py-6 lg:px-8">{children}</main>
         </Providers>
       </body>
     </html>

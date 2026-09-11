@@ -148,4 +148,7 @@ export interface PatientDetail {
 export interface PatientDetailResponse {
   patient: PatientDetail;
   appointments: AppointmentDetail[];
+  /** Neighboring patient ids in the default name-sorted order, for the detail page's Previous/Next buttons. */
+  previous_patient_id: string | null;
+  next_patient_id: string | null;
 }

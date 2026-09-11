@@ -15,10 +15,11 @@ from datetime import datetime
 from app.models import Appointment, AppointmentService, Patient, Payment, Provider, Service
 
 
-def make_patient(id="pat_1", source="website", gender="female", created_date=None, date_of_birth=None):
-    """Build a Patient with default demographics; override id/source/gender/dates as needed."""
+def make_patient(id="pat_1", first_name="Jane", last_name="Doe", source="website", gender="female",
+                  created_date=None, date_of_birth=None):
+    """Build a Patient with default demographics; override id/name/source/gender/dates as needed."""
     return Patient(
-        id=id, first_name="Jane", last_name="Doe",
+        id=id, first_name=first_name, last_name=last_name,
         date_of_birth=date_of_birth or datetime(1990, 1, 1), gender=gender,
         address="123 Main St", phone="555-0100", email=f"{id}@example.com",
         source=source, created_date=created_date or datetime.utcnow(),
