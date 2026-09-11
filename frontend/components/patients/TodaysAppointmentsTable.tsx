@@ -66,6 +66,8 @@ export function TodaysAppointmentsTable({ providerId }: Props) {
         loadingMessage="Loading today's schedule…"
         errorMessage="Could not load today's schedule. Please try again."
         emptyMessage={`No appointments scheduled today${providerId ? " for this provider" : ""}.`}
+        contextKind="today"
+        providerId={providerId}
       />
 
       <ComingUpStrip />

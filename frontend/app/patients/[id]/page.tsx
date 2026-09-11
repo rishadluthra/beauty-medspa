@@ -11,7 +11,7 @@
  */
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
@@ -94,11 +94,19 @@ const CalendarIcon = () => (
 export default function PatientDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const patientId = params.id;
 
+  // The URL's query string IS the list context (see `patientDetailHref`, which every
+  // source list builds its link-out with) -- forwarded as-is to the API so Previous/Next
+  // are scoped to whichever list the agent actually navigated from, and re-appended to
+  // the Previous/Next links below so hopping through several patients in a row keeps
+  // walking that same list instead of reverting to the global default after one hop.
+  const contextQuery = searchParams.toString();
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patient", patientId],
-    queryFn: () => api.getPatientDetail(patientId),
+    queryKey: ["patient", patientId, contextQuery],
+    queryFn: () => api.getPatientDetail(patientId, Object.fromEntries(searchParams.entries())),
   });
 
   const initials = data ? `${data.patient.first_name[0]}${data.patient.last_name[0]}`.toUpperCase() : "";
@@ -114,12 +122,18 @@ export default function PatientDetailPage() {
         </Link>
 
         {/*
-          Previous/Next walk the same (last_name, first_name) order the
-          Patient Table sorts by default — a stable ordering independent
-          of whatever filter/sort was active when the user navigated in,
-          computed server-side in the same request as the rest of this
-          page's data (no extra round-trip). Disabled rather than hidden
-          at either end of that ordering, so the control stays in a
+          Previous/Next walk whichever source list the agent navigated in
+          from (see `contextQuery` above) -- Today's schedule order,
+          Rebooking's most-recent-visit-first order, or All Patients' own
+          active filter/sort -- falling back to the old fixed
+          (last_name, first_name) order when there's no list context at
+          all (a direct link, a global-search result). Computed
+          server-side in the same request as the rest of this page's data
+          (no extra round-trip). The SAME query string is re-appended to
+          the pushed URL below, so clicking through several patients in a
+          row keeps walking that same list instead of reverting to the
+          global default after one hop. Disabled rather than hidden at
+          either end of that ordering, so the control stays in a
           predictable place instead of the layout shifting.
         */}
         {data && (
@@ -127,7 +141,10 @@ export default function PatientDetailPage() {
             <button
               type="button"
               disabled={!data.previous_patient_id}
-              onClick={() => data.previous_patient_id && router.push(`/patients/${data.previous_patient_id}`)}
+              onClick={() =>
+                data.previous_patient_id &&
+                router.push(`/patients/${data.previous_patient_id}${contextQuery ? `?${contextQuery}` : ""}`)
+              }
               className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
             >
               ← Previous
@@ -135,7 +152,10 @@ export default function PatientDetailPage() {
             <button
               type="button"
               disabled={!data.next_patient_id}
-              onClick={() => data.next_patient_id && router.push(`/patients/${data.next_patient_id}`)}
+              onClick={() =>
+                data.next_patient_id &&
+                router.push(`/patients/${data.next_patient_id}${contextQuery ? `?${contextQuery}` : ""}`)
+              }
               className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
             >
               Next →

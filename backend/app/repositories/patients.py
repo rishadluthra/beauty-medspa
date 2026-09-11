@@ -7,10 +7,10 @@ intended to be callable directly by a future AI/natural-language-query
 service as "tools" over the data.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Appointment, AppointmentService, Patient, Payment, Provider, Service
@@ -69,6 +69,116 @@ class PatientFilters:
     age_max: int | None = None
 
 
+@dataclass
+class PatientListContext:
+    """Which source list a Patient Detail page was navigated *from*, and that list's own
+    current filter/sort/scope -- so `get_patient_detail`'s Previous/Next buttons walk the
+    same order the agent was actually looking at (Today's schedule, the Rebooking
+    worklist, a filtered/sorted All Patients view), not always one fixed global order.
+
+    `kind="all"` with the dataclass's own defaults (no filters, sort="name") reproduces
+    exactly the old fixed global `(last_name, first_name, id)` order -- so a direct link,
+    a global-search result, or any other entry point with no real list context at all can
+    simply omit this argument and still get sane, deterministic behavior. An unrecognized
+    `kind` value falls back the same way, in `get_patient_detail` below.
+    """
+
+    kind: str = "all"
+    # kind == "all"
+    filters: PatientFilters = field(default_factory=PatientFilters)
+    sort: str = "name"
+    # kind == "today" or "day": which AppointmentService row was actually clicked (a
+    # patient can have more than one service on the same day), and which provider the
+    # schedule was narrowed to, if any.
+    provider_id: str | None = None
+    service_id: int | None = None
+    # kind == "day" only
+    target_date: date | None = None
+
+
+def _payment_totals_subquery():
+    """Each patient's lifetime spend in cents, summing only *paid* payments -- cancelled/
+    pending/failed payments never count toward it. Shared by `list_patients` (the Patient
+    Table's own total-spent column/sort) and `_neighbors_in_all_patients` (Prev/Next when
+    that same sort is active), so both always agree on exactly the same figure.
+    """
+    return (
+        select(Payment.patient_id, func.sum(Payment.amount).label("total_spent_cents"))
+        .where(Payment.status == "paid")
+        .group_by(Payment.patient_id)
+        .subquery()
+    )
+
+
+def _last_appointment_subquery():
+    """Each patient's most recent *scheduled visit time* (AppointmentService.start, not
+    Appointment.created_date -- see list_patients). Shared the same way as
+    `_payment_totals_subquery`, for the "last_appointment_date" sort.
+    """
+    return (
+        select(Appointment.patient_id, func.max(AppointmentService.start).label("last_appointment_date"))
+        .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
+        .group_by(Appointment.patient_id)
+        .subquery()
+    )
+
+
+def _apply_patient_filters(query, filters: PatientFilters):
+    """Applies every `PatientFilters` field to `query` as a WHERE clause, exactly as
+    `list_patients` needs -- factored out so `_neighbors_in_all_patients` (Prev/Next)
+    filters candidates identically to however the Patient Table itself is currently
+    filtered, and the two can never silently drift apart.
+    """
+    if filters.search:
+        term = filters.search.lower()
+        name_or_phone_match = (
+            # Name matching is a genuine "contains anywhere" fuzzy search --
+            # a substring of someone's real name is meaningfully related to
+            # them, so matching it anywhere in "first last" is correct.
+            func.lower(Patient.first_name + " " + Patient.last_name).like(f"%{term}%")
+            | Patient.phone.like(f"%{filters.search}%")
+        )
+        # See list_patients's historical docstring/comments for why email matching is
+        # restricted to search terms that look like an email address, anchored to the
+        # start of the address only.
+        if "@" in filters.search:
+            query = query.where(name_or_phone_match | func.lower(Patient.email).like(f"{term}%"))
+        else:
+            query = query.where(name_or_phone_match)
+    if filters.source:
+        query = query.where(Patient.source == filters.source)
+    if filters.gender:
+        query = query.where(Patient.gender == filters.gender)
+    if filters.created_from:
+        query = query.where(Patient.created_date >= filters.created_from)
+    if filters.created_to:
+        query = query.where(Patient.created_date < filters.created_to + timedelta(days=1))
+    if filters.age_min is not None:
+        cutoff = _years_before(date.today(), filters.age_min)
+        query = query.where(Patient.date_of_birth < cutoff + timedelta(days=1))
+    if filters.age_max is not None:
+        cutoff = _years_before(date.today(), filters.age_max + 1)
+        query = query.where(Patient.date_of_birth >= cutoff + timedelta(days=1))
+    return query
+
+
+def _patient_sort_expressions(sort: str, payment_totals_sq, last_appointment_sq) -> tuple:
+    """Maps a `sort` value to its ORDER BY expression(s), always ending in `Patient.id` as
+    a final tiebreaker. Without it, patients sharing a sort value (same last name, same
+    total spent, etc.) had no guaranteed stable order -- risking pagination that skips or
+    repeats rows across pages, and (now) a Prev/Next window ranking that could disagree
+    with what the table itself actually displays. Shared by `list_patients` and
+    `_neighbors_in_all_patients` so they always agree.
+    """
+    options = {
+        "name": (Patient.last_name.asc(), Patient.first_name.asc()),
+        "created_date": (Patient.created_date.desc(),),
+        "total_spent": (func.coalesce(payment_totals_sq.c.total_spent_cents, 0).desc(),),
+        "last_appointment_date": (last_appointment_sq.c.last_appointment_date.desc(),),
+    }
+    return options.get(sort, options["name"]) + (Patient.id.asc(),)
+
+
 async def list_patients(
     db: AsyncSession,
     filters: PatientFilters,
@@ -103,12 +213,6 @@ async def list_patients(
         .group_by(Appointment.patient_id)
         .subquery()
     )
-    payment_totals = (
-        select(Payment.patient_id, func.sum(Payment.amount).label("total_spent_cents"))
-        .where(Payment.status == "paid")  # cancelled/pending/failed payments never count toward lifetime spend
-        .group_by(Payment.patient_id)
-        .subquery()
-    )
     # "Last appointment" means the most recent *scheduled visit time*, which
     # lives on AppointmentService.start -- NOT Appointment.created_date
     # (when the booking record was entered into the system, an
@@ -117,12 +221,8 @@ async def list_patients(
     # was a real bug: it could show a "last appointment" date that has
     # nothing to do with when the patient was actually last scheduled to be
     # seen. See get_patient_detail for the same fix applied there.
-    last_appointment = (
-        select(Appointment.patient_id, func.max(AppointmentService.start).label("last_appointment_date"))
-        .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
-        .group_by(Appointment.patient_id)
-        .subquery()
-    )
+    payment_totals = _payment_totals_subquery()
+    last_appointment = _last_appointment_subquery()
 
     query = (
         select(
@@ -136,85 +236,19 @@ async def list_patients(
         .outerjoin(last_appointment, last_appointment.c.patient_id == Patient.id)
     )
 
-    if filters.search:
-        term = filters.search.lower()
-        name_or_phone_match = (
-            # Name matching is a genuine "contains anywhere" fuzzy search --
-            # a substring of someone's real name is meaningfully related to
-            # them, so matching it anywhere in "first last" is correct.
-            func.lower(Patient.first_name + " " + Patient.last_name).like(f"%{term}%")
-            | Patient.phone.like(f"%{filters.search}%")
-        )
-        # Email is matched only when the search term actually looks like an
-        # email address (contains "@"), not for a plain name-shaped query --
-        # and even then, only from the START of the address. Both
-        # restrictions exist because of the same underlying data-quality
-        # property: this seed dataset's email local-parts are drawn from a
-        # pool of name-like tokens assigned INDEPENDENTLY of the patient's
-        # real identity (already documented elsewhere in this file for
-        # gender/first_name and appointment status/time). That's not just a
-        # theoretical risk -- verified directly against the live data:
-        # searching "abbott" (with a plain, unanchored match) pulled in
-        # patients whose random email merely CONTAINED "abbott"; even after
-        # anchoring email matching to the start of the address, searching
-        # "alicia" still returned "Elizabeth Blackburn" and "Karen Garcia"
-        # (completely unrelated patients) because their real, random emails
-        # happen to legitimately START WITH "alicia" (e.g.
-        # "alicia50@example.net") -- anchoring alone cannot fix a false
-        # positive that IS the real, anchored start of the string. Since a
-        # plain name-shaped search term has no reliable way to distinguish
-        # "the start of a coincidental email" from "the start of a real
-        # email", the only robust fix is to not treat a name-shaped query as
-        # a potential email at all -- only a term that already contains "@"
-        # (i.e. someone actually typing or pasting an email address) enables
-        # this predicate.
-        if "@" in filters.search:
-            query = query.where(name_or_phone_match | func.lower(Patient.email).like(f"{term}%"))
-        else:
-            query = query.where(name_or_phone_match)
-    if filters.source:
-        query = query.where(Patient.source == filters.source)
-    if filters.gender:
-        query = query.where(Patient.gender == filters.gender)
-    if filters.created_from:
-        query = query.where(Patient.created_date >= filters.created_from)
-    if filters.created_to:
-        # `created_date` is a datetime column; comparing directly against
-        # `created_to` (a date) would only include up to midnight of that
-        # day, silently excluding anything created later that same day.
-        # Comparing against the *next* day with `<` makes the end date
-        # inclusive of its whole 24 hours.
-        query = query.where(Patient.created_date < filters.created_to + timedelta(days=1))
-    if filters.age_min is not None:
-        # "At least age_min years old today" means born on or before
-        # (today - age_min years) — e.g. to be >= 20 today, you must have
-        # been born on or before this same calendar date 20 years ago.
-        # `date_of_birth` is a full timestamp, not just a date, so "on or
-        # before that calendar date" (inclusive of the whole day,
-        # regardless of what time someone's DOB happens to carry) means
-        # strictly before the *next* day — same reasoning as created_to.
-        cutoff = _years_before(date.today(), filters.age_min)
-        query = query.where(Patient.date_of_birth < cutoff + timedelta(days=1))
-    if filters.age_max is not None:
-        # "At most age_max years old today" means NOT YET (age_max + 1)
-        # years old, i.e. born strictly after (today - (age_max + 1)
-        # years) — someone born on or before that calendar date would
-        # already be age_max + 1, one year too old. "Strictly after that
-        # calendar date" (again treating date_of_birth as a full
-        # timestamp) means on or after the day right after it.
-        cutoff = _years_before(date.today(), filters.age_max + 1)
-        query = query.where(Patient.date_of_birth >= cutoff + timedelta(days=1))
+    # See `_apply_patient_filters` for why email matching is restricted to
+    # search terms that already look like an email address, anchored to the
+    # start of the address only (this dataset's random email local-parts
+    # otherwise produce false-positive matches against plain name searches).
+    query = _apply_patient_filters(query, filters)
 
     # Count matching rows (post-filter) for pagination metadata, without pulling all rows.
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
 
-    sort_columns = {
-        "name": Patient.last_name.asc(),
-        "created_date": Patient.created_date.desc(),
-        "total_spent": func.coalesce(payment_totals.c.total_spent_cents, 0).desc(),
-        "last_appointment_date": last_appointment.c.last_appointment_date.desc(),
-    }
-    query = query.order_by(sort_columns.get(sort, Patient.last_name.asc()))
+    # See `_patient_sort_expressions` for why every sort ends in a
+    # `Patient.id` tiebreaker -- without it, ties (e.g. two patients sharing
+    # a last name) had no guaranteed stable order across pages.
+    query = query.order_by(*_patient_sort_expressions(sort, payment_totals, last_appointment))
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     rows = (await db.execute(query)).all()
@@ -233,7 +267,42 @@ async def list_patients(
     return PatientListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
-async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetailResponse | None:
+async def _neighbors_in_all_patients(
+    db: AsyncSession, patient_id: str, filters: PatientFilters, sort: str,
+) -> tuple[str | None, str | None]:
+    """Previous/Next `Patient.id` for `get_patient_detail`'s `kind="all"` context: the
+    patient immediately before/after `patient_id` in the exact filtered+sorted order
+    `list_patients` would display for these same `filters`/`sort`.
+
+    Ranks every matching patient with `ROW_NUMBER() OVER (ORDER BY ...)` (using the same
+    filter/sort building blocks `list_patients` itself uses, so the two can never
+    disagree), finds `patient_id`'s own rank, then looks up rank-1 and rank+1. Returns
+    `(None, None)` if the filters exclude `patient_id` entirely (e.g. the agent navigated
+    in from an unfiltered link, then the underlying data changed) -- there's no principled
+    "previous/next" for a patient that isn't actually in the list being scoped to.
+    """
+    payment_totals = _payment_totals_subquery()
+    last_appointment = _last_appointment_subquery()
+    base = (
+        select(Patient.id)
+        .outerjoin(payment_totals, payment_totals.c.patient_id == Patient.id)
+        .outerjoin(last_appointment, last_appointment.c.patient_id == Patient.id)
+    )
+    base = _apply_patient_filters(base, filters)
+    order_exprs = _patient_sort_expressions(sort, payment_totals, last_appointment)
+    ranked = base.add_columns(func.row_number().over(order_by=order_exprs).label("rn")).subquery()
+
+    current_rn = (await db.execute(select(ranked.c.rn).where(ranked.c.id == patient_id))).scalar_one_or_none()
+    if current_rn is None:
+        return None, None
+    previous_id = (await db.execute(select(ranked.c.id).where(ranked.c.rn == current_rn - 1))).scalar_one_or_none()
+    next_id = (await db.execute(select(ranked.c.id).where(ranked.c.rn == current_rn + 1))).scalar_one_or_none()
+    return previous_id, next_id
+
+
+async def get_patient_detail(
+    db: AsyncSession, patient_id: str, context: PatientListContext | None = None,
+) -> PatientDetailResponse | None:
     """Return one patient's full profile plus their complete appointment history, or None if not found.
 
     Unlike `list_patients` (aggregate-only, computed across ~4,000 patients
@@ -242,12 +311,13 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
     first -- see `AppointmentDetail.appointment_date`, NOT by when the
     booking record was created), every service performed within each one
     (with its provider and time window, via `AppointmentService`), and the
-    payment tied to each appointment, if any, plus the adjacent patient
-    ids (in the default name-sorted order) for Previous/Next navigation.
-    This is the data that powers the "click a patient row for more info"
-    Patient Detail page — the raw appointment/service/provider/payment
-    records were previously only ever touched in aggregate by the
-    analytics queries, never surfaced per-patient.
+    payment tied to each appointment, if any, plus the adjacent patient ids
+    for Previous/Next navigation -- see `context` (a `PatientListContext`)
+    for how those neighbors are chosen. This is the data that powers the
+    "click a patient row for more info" Patient Detail page — the raw
+    appointment/service/provider/payment records were previously only ever
+    touched in aggregate by the analytics queries, never surfaced
+    per-patient.
 
     A payment maps to at most one appointment in the real seed data
     (verified directly against seed_data/payment.json: 5,311 payments,
@@ -345,25 +415,30 @@ async def get_patient_detail(db: AsyncSession, patient_id: str) -> PatientDetail
     # sorts last rather than crowding out real dates at the top.
     appointment_items.sort(key=lambda item: item.appointment_date or datetime.min, reverse=True)
 
-    # Previous/Next patient, in the same (last_name, first_name, id) order
-    # the Patient Table sorts by default -- a stable global ordering, not
-    # tied to whatever filter/sort was active on the table when the user
-    # navigated here, so the buttons behave identically regardless of
-    # entry point (including a direct URL visit). `id` is included in the
-    # ordering key purely as a tie-breaker for patients sharing a full
-    # name, so the ordering (and thus "next"/"previous") is deterministic.
-    current_key = (patient.last_name, patient.first_name, patient.id)
-    order_key = tuple_(Patient.last_name, Patient.first_name, Patient.id)
-    previous_patient_id = (await db.execute(
-        select(Patient.id).where(order_key < current_key)
-        .order_by(Patient.last_name.desc(), Patient.first_name.desc(), Patient.id.desc())
-        .limit(1)
-    )).scalar_one_or_none()
-    next_patient_id = (await db.execute(
-        select(Patient.id).where(order_key > current_key)
-        .order_by(Patient.last_name.asc(), Patient.first_name.asc(), Patient.id.asc())
-        .limit(1)
-    )).scalar_one_or_none()
+    # Previous/Next patient, scoped to whichever source list the agent actually
+    # navigated from -- see `PatientListContext` and each `_neighbors_in_*`
+    # helper below. `context` defaults to `PatientListContext()` (kind="all",
+    # no filters, sort="name"), which reproduces the old fixed global
+    # `(last_name, first_name, id)` order -- so a direct URL visit or a
+    # global-search result (neither of which has a real list to scope to)
+    # still gets sane, deterministic neighbors.
+    context = context or PatientListContext()
+    if context.kind == "today":
+        reference_now = await get_reference_now(db)
+        previous_patient_id, next_patient_id = await _neighbors_in_schedule(
+            db, context.service_id, reference_now, reference_now + timedelta(days=1), context.provider_id,
+        )
+    elif context.kind == "day" and context.target_date is not None:
+        start_of_day = datetime.combine(context.target_date, time.min)
+        previous_patient_id, next_patient_id = await _neighbors_in_schedule(
+            db, context.service_id, start_of_day, start_of_day + timedelta(days=1), context.provider_id,
+        )
+    elif context.kind == "rebooking":
+        previous_patient_id, next_patient_id = await _neighbors_in_rebooking(db, patient_id)
+    else:
+        previous_patient_id, next_patient_id = await _neighbors_in_all_patients(
+            db, patient_id, context.filters, context.sort,
+        )
 
     return PatientDetailResponse(
         patient=PatientDetail(
@@ -440,7 +515,10 @@ async def _list_schedule_between(
             AppointmentService.start >= start_of_day,
             AppointmentService.start < end_of_day,
         )
-        .order_by(AppointmentService.start.asc())
+        # `.id` breaks ties between services starting at the exact same
+        # timestamp -- common in this seed data -- so the display order here
+        # and the row ranking in `_neighbors_in_schedule` always agree.
+        .order_by(AppointmentService.start.asc(), AppointmentService.id.asc())
     )
     if provider_id:
         query = query.where(AppointmentService.provider_id == provider_id)
@@ -461,6 +539,49 @@ async def _list_schedule_between(
     return TodaysAppointmentsResponse(
         items=items, total=total, page=page, page_size=page_size, reference_date=reference_date,
     )
+
+
+async def _neighbors_in_schedule(
+    db: AsyncSession, service_id: int | None, start_of_day: datetime, end_of_day: datetime, provider_id: str | None,
+) -> tuple[str | None, str | None]:
+    """Previous/Next `Patient.id` for `get_patient_detail`'s `kind="today"`/`"day"`
+    contexts: the patient belonging to the schedule row immediately before/after the
+    specific `AppointmentService` row `service_id` in the same `[start_of_day, end_of_day)`
+    window `_list_schedule_between` displays (same filters, same
+    `(start, id)` order).
+
+    `service_id` -- not just the current patient's id -- identifies the exact row that was
+    clicked, because a patient can have more than one service scheduled the same day; using
+    only the patient id would leave "which of their rows are we walking from" ambiguous.
+    Returns `(None, None)` if `service_id` doesn't resolve to a row in this window (e.g. no
+    `service_id` was given at all, such as a stale/malformed link) -- disabling the
+    buttons rather than guessing.
+    """
+    base = (
+        select(AppointmentService.id, Appointment.patient_id)
+        .join(Appointment, Appointment.id == AppointmentService.appointment_id)
+        .where(
+            Appointment.status != "cancelled",
+            AppointmentService.start >= start_of_day,
+            AppointmentService.start < end_of_day,
+        )
+    )
+    if provider_id:
+        base = base.where(AppointmentService.provider_id == provider_id)
+    ranked = base.add_columns(
+        func.row_number().over(order_by=(AppointmentService.start.asc(), AppointmentService.id.asc())).label("rn")
+    ).subquery()
+
+    current_rn = (await db.execute(select(ranked.c.rn).where(ranked.c.id == service_id))).scalar_one_or_none()
+    if current_rn is None:
+        return None, None
+    previous_patient_id = (
+        await db.execute(select(ranked.c.patient_id).where(ranked.c.rn == current_rn - 1))
+    ).scalar_one_or_none()
+    next_patient_id = (
+        await db.execute(select(ranked.c.patient_id).where(ranked.c.rn == current_rn + 1))
+    ).scalar_one_or_none()
+    return previous_patient_id, next_patient_id
 
 
 async def list_todays_appointments(
@@ -631,26 +752,12 @@ async def list_upcoming_appointments(
     )
 
 
-async def list_rebooking_opportunities(
-    db: AsyncSession, page: int = 1, page_size: int = 25,
-) -> RebookingOpportunitiesResponse:
-    """List patients who have been seen before but have nothing scheduled going forward --
-    the front desk's outreach/rebooking worklist, not just a demographic filter.
-
-    A patient qualifies if they have at least one non-cancelled appointment AND none of
-    their non-cancelled appointments start on or after the reference "today" (see
-    `get_reference_now`) -- i.e. nothing scheduled today, and nothing upcoming either.
-    Sorted by their most recent visit, most-recent-first: a patient seen last week is a far
-    more promising rebooking call than one seen a year ago, and this ordering surfaces the
-    best candidates first without an arbitrary "seen within N days" cutoff that would
-    silently hide someone worth calling.
+def _rebooking_subqueries(reference_now: datetime):
+    """The `(has_upcoming, last_visit)` subqueries shared by `list_rebooking_opportunities`
+    and `_neighbors_in_rebooking`, so Prev/Next on that worklist can never disagree with
+    what the worklist itself displays. See `list_rebooking_opportunities` for what each
+    subquery means and why.
     """
-    reference_now = await get_reference_now(db)
-
-    # Patients with ANY non-cancelled appointment starting today or later already have
-    # something on the books and don't belong on a rebooking list -- excluded via an
-    # anti-join (LEFT JOIN ... WHERE NULL) below, not a NOT IN subquery, to avoid the
-    # classic NOT IN + NULL pitfall entirely.
     has_upcoming = (
         select(Appointment.patient_id)
         .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
@@ -658,17 +765,6 @@ async def list_rebooking_opportunities(
         .distinct()
         .subquery()
     )
-
-    # Each patient's single most recent non-cancelled AppointmentService row (by start
-    # time) -- not just an aggregated MAX() timestamp, but the actual service+provider that
-    # happened at that moment, via a row_number() window function (the same "soonest/latest
-    # per patient" pattern used in list_upcoming_appointments). This is what drives
-    # last_service_name/last_provider_name below: the front desk's rebooking pitch is
-    # naturally "you're due for another [service] with [provider]," so the list needs the
-    # specific service+provider from that visit, not just its date. No additional time
-    # filter is needed beyond the has_upcoming anti-join above: by construction, anyone who
-    # reaches this list has no non-cancelled appointment >= reference_now, so the latest row
-    # per patient here is already guaranteed to land in the past.
     ranked_visits = (
         select(
             Appointment.patient_id,
@@ -687,6 +783,34 @@ async def list_rebooking_opportunities(
         .subquery()
     )
     last_visit = select(ranked_visits).where(ranked_visits.c.rn == 1).subquery()
+    return has_upcoming, last_visit
+
+
+async def list_rebooking_opportunities(
+    db: AsyncSession, page: int = 1, page_size: int = 25,
+) -> RebookingOpportunitiesResponse:
+    """List patients who have been seen before but have nothing scheduled going forward --
+    the front desk's outreach/rebooking worklist, not just a demographic filter.
+
+    A patient qualifies if they have at least one non-cancelled appointment AND none of
+    their non-cancelled appointments start on or after the reference "today" (see
+    `get_reference_now`) -- i.e. nothing scheduled today, and nothing upcoming either.
+    Sorted by their most recent visit, most-recent-first: a patient seen last week is a far
+    more promising rebooking call than one seen a year ago, and this ordering surfaces the
+    best candidates first without an arbitrary "seen within N days" cutoff that would
+    silently hide someone worth calling.
+
+    Patients with ANY non-cancelled appointment starting today or later already have
+    something on the books and don't belong on this list -- excluded via an anti-join
+    (LEFT JOIN ... WHERE NULL), not a NOT IN subquery, to avoid the classic NOT IN + NULL
+    pitfall entirely. The most recent non-cancelled visit's specific service+provider (not
+    just an aggregated MAX() timestamp) drives last_service_name/last_provider_name: the
+    front desk's rebooking pitch is naturally "you're due for another [service] with
+    [provider]," so the list needs the actual service+provider from that visit, not just
+    its date.
+    """
+    reference_now = await get_reference_now(db)
+    has_upcoming, last_visit = _rebooking_subqueries(reference_now)
 
     query = (
         select(
@@ -696,7 +820,9 @@ async def list_rebooking_opportunities(
         .join(last_visit, last_visit.c.patient_id == Patient.id)
         .outerjoin(has_upcoming, has_upcoming.c.patient_id == Patient.id)
         .where(has_upcoming.c.patient_id.is_(None))
-        .order_by(last_visit.c.start.desc())
+        # `Patient.id` breaks ties between patients whose most recent visit started at the
+        # exact same timestamp, so this order and `_neighbors_in_rebooking`'s ranking agree.
+        .order_by(last_visit.c.start.desc(), Patient.id.asc())
     )
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
@@ -715,3 +841,29 @@ async def list_rebooking_opportunities(
     return RebookingOpportunitiesResponse(
         items=items, total=total, page=page, page_size=page_size, reference_date=reference_now.date(),
     )
+
+
+async def _neighbors_in_rebooking(db: AsyncSession, patient_id: str) -> tuple[str | None, str | None]:
+    """Previous/Next `Patient.id` for `get_patient_detail`'s `kind="rebooking"` context:
+    the patient immediately before/after `patient_id` in the same most-recent-visit-first
+    order `list_rebooking_opportunities` displays. Returns `(None, None)` if `patient_id`
+    no longer qualifies for the worklist at all (e.g. they've since been rebooked).
+    """
+    reference_now = await get_reference_now(db)
+    has_upcoming, last_visit = _rebooking_subqueries(reference_now)
+    base = (
+        select(Patient.id)
+        .join(last_visit, last_visit.c.patient_id == Patient.id)
+        .outerjoin(has_upcoming, has_upcoming.c.patient_id == Patient.id)
+        .where(has_upcoming.c.patient_id.is_(None))
+    )
+    ranked = base.add_columns(
+        func.row_number().over(order_by=(last_visit.c.start.desc(), Patient.id.asc())).label("rn")
+    ).subquery()
+
+    current_rn = (await db.execute(select(ranked.c.rn).where(ranked.c.id == patient_id))).scalar_one_or_none()
+    if current_rn is None:
+        return None, None
+    previous_id = (await db.execute(select(ranked.c.id).where(ranked.c.rn == current_rn - 1))).scalar_one_or_none()
+    next_id = (await db.execute(select(ranked.c.id).where(ranked.c.rn == current_rn + 1))).scalar_one_or_none()
+    return previous_id, next_id

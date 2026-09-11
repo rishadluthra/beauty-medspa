@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.repositories.patients import (
     PatientFilters,
+    PatientListContext,
     get_calendar_month,
     get_patient_detail,
     list_patients,
@@ -148,15 +149,53 @@ async def get_day_schedule(
 
 
 @router.get("/{patient_id}", response_model=PatientDetailResponse)
-async def get_patient(patient_id: str, db: AsyncSession = Depends(get_db)) -> PatientDetailResponse:
+async def get_patient(
+    patient_id: str,
+    ctx: str | None = None,
+    sort: str = "name",
+    search: str | None = None,
+    source: str | None = None,
+    gender: str | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    age_min: int | None = Query(None, ge=0),
+    age_max: int | None = Query(None, ge=0),
+    provider_id: str | None = None,
+    service_id: int | None = None,
+    schedule_date: date | None = Query(None, alias="date"),
+    db: AsyncSession = Depends(get_db),
+) -> PatientDetailResponse:
     """One patient's full profile plus their complete appointment history, for the Patient Detail page.
 
     This is the drill-down from a Patient Table row: every appointment,
     every service performed within it (with provider and time), and its
     payment if any — none of which the table view (or the analytics
     aggregates) ever surfaces per-patient.
+
+    `ctx` ("all" | "today" | "day" | "rebooking") tells the Previous/Next
+    buttons which source list the agent actually navigated from, so they
+    walk that list's own order instead of a fixed global one -- see
+    `PatientListContext`. The remaining params are that context's own
+    scope: `sort`/`search`/`source`/`gender`/`created_from`/`created_to`/
+    `age_min`/`age_max` for "all" (identical meaning to `GET /api/patients`),
+    `provider_id`/`service_id` for "today"/"day", and additionally `date`
+    for "day". Omitting `ctx` (a direct link, a global-search result, or
+    any other entry point with no real list to scope to) falls back to the
+    old fixed global name-sorted order.
     """
-    detail = await get_patient_detail(db, patient_id)
+    context = PatientListContext(
+        kind=ctx or "all",
+        filters=PatientFilters(
+            search=search, source=source, gender=gender,
+            created_from=created_from, created_to=created_to,
+            age_min=age_min, age_max=age_max,
+        ),
+        sort=sort,
+        provider_id=provider_id,
+        service_id=service_id,
+        target_date=schedule_date,
+    )
+    detail = await get_patient_detail(db, patient_id, context)
     if detail is None:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
     return detail

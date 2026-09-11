@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 
 from app.repositories.patients import (
     PatientFilters,
+    PatientListContext,
     get_calendar_month,
     get_patient_detail,
     list_rebooking_opportunities,
@@ -280,6 +281,155 @@ async def test_get_patient_detail_includes_adjacent_patient_ids_for_navigation(d
     last = await get_patient_detail(db_session, "pat_carter")
     assert last.previous_patient_id == "pat_baker"
     assert last.next_patient_id is None
+
+
+async def test_get_patient_detail_all_context_scopes_previous_next_to_active_sort_and_filters(db_session):
+    """`context=PatientListContext(kind="all", filters=..., sort=...)` walks Previous/Next
+    in whatever filter+sort the Patient Table is currently using -- not always its default
+    unfiltered, name-sorted order.
+
+    Four patients, three "instagram"-sourced with different total spend and one
+    "google"-sourced. Sorting by total_spent (descending) within source="instagram" gives
+    an order (pat_a $300 > pat_c $200 > pat_b $100) that is neither alphabetical
+    (last names are Zeta/Middle/Alpha) nor insertion order, and excludes the google
+    patient entirely -- so a correct result here proves the filter+sort are genuinely
+    being applied, not silently defaulted.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Zed", last_name="Zeta", source="instagram"),
+        make_patient(id="pat_b", first_name="Amy", last_name="Alpha", source="instagram"),
+        make_patient(id="pat_c", first_name="Mia", last_name="Middle", source="instagram"),
+        make_patient(id="pat_other_source", first_name="Ann", last_name="Aardvark", source="google"),
+        make_provider(), make_service(),
+        make_appointment(id="apt_a", patient_id="pat_a"),
+        make_appointment(id="apt_b", patient_id="pat_b"),
+        make_appointment(id="apt_c", patient_id="pat_c"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_payment(id="pay_a", patient_id="pat_a", appointment_id="apt_a", amount=30000, status="paid"),
+        make_payment(id="pay_b", patient_id="pat_b", appointment_id="apt_b", amount=10000, status="paid"),
+        make_payment(id="pay_c", patient_id="pat_c", appointment_id="apt_c", amount=20000, status="paid"),
+    ])
+    await db_session.commit()
+
+    context = PatientListContext(kind="all", filters=PatientFilters(source="instagram"), sort="total_spent")
+
+    middle = await get_patient_detail(db_session, "pat_c", context=context)
+    assert middle.previous_patient_id == "pat_a"
+    assert middle.next_patient_id == "pat_b"
+
+    top = await get_patient_detail(db_session, "pat_a", context=context)
+    assert top.previous_patient_id is None
+    assert top.next_patient_id == "pat_c"
+
+    # Same patient, no context (or the default "all"/unfiltered/name-sorted context) --
+    # falls back to the old fixed global order instead, proving the two don't bleed into
+    # each other. Global order is (last_name, first_name): Alpha, Middle, Zeta, so pat_a
+    # ("Zeta") has no next and its previous is pat_c ("Middle") -- the opposite of the
+    # total_spent-sorted result above.
+    global_order = await get_patient_detail(db_session, "pat_a")
+    assert global_order.previous_patient_id == "pat_c"
+    assert global_order.next_patient_id is None
+
+
+async def test_get_patient_detail_today_context_scopes_previous_next_to_todays_schedule_order(db_session):
+    """`context=PatientListContext(kind="today", service_id=..., provider_id=...)` walks
+    Previous/Next in the same chronological schedule order (optionally narrowed to one
+    provider) `list_todays_appointments` displays -- not the global name-sorted order.
+
+    `service_id` (not just the patient id) pins down which specific row on the schedule
+    the agent actually clicked, since a patient can have more than one service today.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Alice", last_name="Zeta"),
+        make_patient(id="pat_b", first_name="Bob", last_name="Yankee"),
+        make_patient(id="pat_c", first_name="Carol", last_name="Xray"),
+        make_provider(id="prv_1", first_name="Dr", last_name="Smith"),
+        make_provider(id="prv_2", first_name="Dr", last_name="Jones"),
+        make_service(),
+        make_appointment(id="apt_a", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_a_later", patient_id="pat_a", status="confirmed"),  # sets the latest data month
+        make_appointment(id="apt_b", patient_id="pat_b", status="confirmed"),
+        make_appointment(id="apt_c", patient_id="pat_c", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_a", provider_id="prv_1", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_a_later", provider_id="prv_1", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+        make_appointment_service(appointment_id="apt_b", provider_id="prv_2", start=datetime(2026, 1, 1, 11, 0), end=datetime(2026, 1, 1, 11, 30)),
+        make_appointment_service(appointment_id="apt_c", provider_id="prv_1", start=datetime(2026, 1, 1, 14, 0), end=datetime(2026, 1, 1, 14, 30)),
+    ])
+    await db_session.commit()
+
+    # Names are deliberately reverse-alphabetical (Alice Zeta ... Carol Xray) so a correct
+    # chronological result here proves the global name-sorted fallback isn't being used.
+    schedule = await list_todays_appointments(db_session)
+    middle_service_id = next(item.id for item in schedule.items if item.patient_id == "pat_b")
+
+    detail = await get_patient_detail(
+        db_session, "pat_b", context=PatientListContext(kind="today", service_id=middle_service_id),
+    )
+    assert detail.previous_patient_id == "pat_a"
+    assert detail.next_patient_id == "pat_c"
+
+    # Narrowing to Dr Smith's (prv_1) own schedule removes pat_b (Dr Jones's patient) from
+    # the ranking entirely, so pat_a's and pat_c's own Dr Smith slots become each other's
+    # direct neighbors.
+    prv1_schedule = await list_todays_appointments(db_session, provider_id="prv_1")
+    a_service_id = next(item.id for item in prv1_schedule.items if item.patient_id == "pat_a")
+    detail_a = await get_patient_detail(
+        db_session, "pat_a",
+        context=PatientListContext(kind="today", service_id=a_service_id, provider_id="prv_1"),
+    )
+    assert detail_a.previous_patient_id is None
+    assert detail_a.next_patient_id == "pat_c"
+
+
+async def test_get_patient_detail_rebooking_context_scopes_previous_next_to_rebooking_order(db_session):
+    """`context=PatientListContext(kind="rebooking")` walks Previous/Next in the same
+    most-recent-visit-first order `list_rebooking_opportunities` displays -- not the
+    global name-sorted order.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Zed", last_name="Zeta"),    # most recent visit
+        make_patient(id="pat_g", first_name="Gale", last_name="Gamma"),  # middle
+        make_patient(id="pat_b", first_name="Amy", last_name="Alpha"),   # oldest visit
+        make_patient(id="pat_d", first_name="Dana", last_name="Dean"),   # sets the latest data months
+        make_provider(), make_service(),
+        make_appointment(id="apt_a", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_g", patient_id="pat_g", status="confirmed"),
+        make_appointment(id="apt_b", patient_id="pat_b", status="confirmed"),
+        # A different patient's appointments in TWO further-out months (Jan and Feb 2026)
+        # anchor the reference date to Jan 2026 (the second-to-last of three distinct
+        # months: Nov 2025, Jan 2026, Feb 2026) -- see the identical reasoning in
+        # test_list_rebooking_opportunities_last_service_and_provider_come_from_the_latest_row_specifically
+        # for why a single further-out month (making reference land in Nov/Dec 2025
+        # itself) would risk flagging one of pat_a/pat_g/pat_b as having an "upcoming"
+        # appointment via the has_upcoming anti-join.
+        make_appointment(id="apt_month_jan", patient_id="pat_d", status="confirmed"),
+        make_appointment(id="apt_month_feb", patient_id="pat_d", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_a", start=datetime(2025, 11, 20, 9, 0), end=datetime(2025, 11, 20, 9, 30)),
+        make_appointment_service(appointment_id="apt_g", start=datetime(2025, 11, 10, 9, 0), end=datetime(2025, 11, 10, 9, 30)),
+        make_appointment_service(appointment_id="apt_b", start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_month_jan", start=datetime(2026, 1, 5, 10, 0), end=datetime(2026, 1, 5, 10, 30)),
+        make_appointment_service(appointment_id="apt_month_feb", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    # Names are deliberately NOT in visit-recency order (pat_a="Zed Zeta" would sort last
+    # alphabetically despite having the most recent visit), so a correct rebooking-order
+    # result here proves it isn't silently falling back to the global name-sorted order.
+    detail = await get_patient_detail(db_session, "pat_g", context=PatientListContext(kind="rebooking"))
+    assert detail.previous_patient_id == "pat_a"  # more recent visit (Nov 20) sorts before
+    assert detail.next_patient_id == "pat_b"  # older visit (Nov 1) sorts after
+
+    first = await get_patient_detail(db_session, "pat_a", context=PatientListContext(kind="rebooking"))
+    assert first.previous_patient_id is None
+    assert first.next_patient_id == "pat_g"
 
 
 async def test_list_upcoming_appointments_anchors_to_first_of_second_to_last_data_month(db_session):

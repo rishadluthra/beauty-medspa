@@ -155,6 +155,9 @@ export function CalendarView() {
             loadingMessage="Loading that day's schedule…"
             errorMessage="Could not load that day's schedule. Please try again."
             emptyMessage={`No appointments scheduled${providerId ? " for this provider" : ""} on this day.`}
+            contextKind="day"
+            providerId={providerId}
+            date={selectedDate}
           />
         </div>
       )}

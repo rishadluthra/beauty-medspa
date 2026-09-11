@@ -144,10 +144,38 @@ export interface PatientDetail {
 export interface PatientDetailResponse {
   patient: PatientDetail;
   appointments: AppointmentDetail[];
-  /** Neighboring patient ids in the default name-sorted order, for the detail page's Previous/Next buttons. */
+  /**
+   * Neighboring patient ids for the detail page's Previous/Next buttons -- scoped to
+   * whichever source list context (see {@link PatientDetailContext}) the request asked
+   * for, or the default global name-sorted order if none was given.
+   */
   previous_patient_id: string | null;
   next_patient_id: string | null;
 }
+
+/**
+ * Which source list a Patient Detail page navigation came from, so its Previous/Next
+ * buttons can walk that same list's own order instead of always the global default --
+ * see the backend's `PatientListContext` for the full contract. Every list that links to
+ * `/patients/{id}` builds one of these and encodes it into the URL's query string
+ * (`patientContextToQuery` below); the detail page reads it back out and forwards it to
+ * `api.getPatientDetail`.
+ */
+export type PatientDetailContext =
+  | {
+      kind: "all";
+      sort?: string;
+      search?: string;
+      source?: string;
+      gender?: string;
+      created_from?: string;
+      created_to?: string;
+      age_min?: number;
+      age_max?: number;
+    }
+  | { kind: "today"; providerId?: string; serviceId: number }
+  | { kind: "day"; date: string; providerId?: string; serviceId: number }
+  | { kind: "rebooking" };
 
 /** One scheduled service occurring "today", as returned by `GET /api/patients/today`. One row per service, not per patient. */
 export interface TodaysAppointmentItem {

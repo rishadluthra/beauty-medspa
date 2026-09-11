@@ -20,8 +20,9 @@
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
-import { api, type PatientQueryParams } from "@/lib/api";
+import { api, patientDetailHref, type PatientQueryParams } from "@/lib/api";
 import { calculateAge, formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
+import type { PatientDetailContext } from "@/lib/types";
 import { SourceBadge } from "./SourceBadge";
 
 interface Props {
@@ -46,6 +47,14 @@ export function PatientTable({ filters, onFiltersChange }: Props) {
     queryKey: ["patients", filters],
     queryFn: () => api.getPatients(filters),
   });
+
+  // Same filters/sort the table itself is currently showing -- so the detail page's
+  // Previous/Next buttons walk this exact list, not the unfiltered global order.
+  const context: PatientDetailContext = {
+    kind: "all", sort: filters.sort, search: filters.search, source: filters.source,
+    gender: filters.gender, created_from: filters.created_from, created_to: filters.created_to,
+    age_min: filters.age_min, age_max: filters.age_max,
+  };
 
   return (
     <div className="space-y-4">
@@ -108,7 +117,7 @@ export function PatientTable({ filters, onFiltersChange }: Props) {
                 {data.items.map((patient) => (
                   <tr
                     key={patient.id}
-                    onClick={() => router.push(`/patients/${patient.id}`)}
+                    onClick={() => router.push(patientDetailHref(patient.id, context))}
                     className="cursor-pointer transition-colors hover:bg-brand-gold/5"
                   >
                     <td className="whitespace-nowrap px-4 py-3.5">{patient.first_name} {patient.last_name}</td>
@@ -136,7 +145,7 @@ export function PatientTable({ filters, onFiltersChange }: Props) {
             {data.items.map((patient) => (
               <div
                 key={patient.id}
-                onClick={() => router.push(`/patients/${patient.id}`)}
+                onClick={() => router.push(patientDetailHref(patient.id, context))}
                 className="cursor-pointer rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10"
               >
                 <div className="flex items-start justify-between gap-2">

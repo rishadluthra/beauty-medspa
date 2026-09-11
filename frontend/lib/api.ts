@@ -14,6 +14,7 @@ import type {
   CalendarMonthResponse,
   DemographicsResponse,
   OverviewStats,
+  PatientDetailContext,
   PatientDetailResponse,
   PatientListResponse,
   ProviderListResponse,
@@ -105,9 +106,23 @@ export const api = {
    * history, for the Patient Detail page. Resolves to `null` (rather than
    * throwing) when the patient doesn't exist, so the detail page can
    * render a clean "not found" state instead of a generic error.
+   *
+   * `params`, when given, are the same `ctx`/`sort`/`search`/.../`service_id`/`date`
+   * query keys `patientDetailHref` encodes into the URL -- the detail page just
+   * forwards its own `useSearchParams()` straight through here rather than
+   * re-deriving a typed context, so a Previous/Next hop can never drift from
+   * whatever context the agent actually navigated in with.
    */
-  getPatientDetail: async (id: string): Promise<PatientDetailResponse | null> => {
-    const response = await fetch(`${API_BASE_URL}/api/patients/${encodeURIComponent(id)}`);
+  getPatientDetail: async (
+    id: string, params?: Record<string, string | number | undefined>,
+  ): Promise<PatientDetailResponse | null> => {
+    const url = new URL(`${API_BASE_URL}/api/patients/${encodeURIComponent(id)}`);
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
+      }
+    }
+    const response = await fetch(url.toString());
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`API request failed: ${response.status} ${response.statusText}`);
     return response.json() as Promise<PatientDetailResponse>;
@@ -125,3 +140,45 @@ export const api = {
   /** Fetches gender and age-bucket breakdowns, for the demographics chart. */
   getDemographics: () => apiGet<DemographicsResponse>("/api/analytics/demographics"),
 };
+
+/**
+ * Builds the `/patients/{id}` URL for linking to a patient from a specific source list,
+ * encoding `context` into the query string with the exact key names
+ * `api.getPatientDetail`/the backend expect (`ctx`, `sort`, `search`, ..., `provider_id`,
+ * `service_id`, `date`) -- so the destination page's Previous/Next buttons walk that
+ * same list's order instead of the global default (see `PatientDetailContext`).
+ *
+ * Every list/table component that links out to a patient should build its link through
+ * this helper rather than a bare `/patients/${id}` template string, so a new list added
+ * later doesn't have to reinvent (or risk misspelling) these query param names.
+ */
+export function patientDetailHref(patientId: string, context?: PatientDetailContext): string {
+  const query = new URLSearchParams();
+  const set = (key: string, value: string | number | undefined) => {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  };
+
+  if (context) {
+    set("ctx", context.kind);
+    if (context.kind === "all") {
+      set("sort", context.sort);
+      set("search", context.search);
+      set("source", context.source);
+      set("gender", context.gender);
+      set("created_from", context.created_from);
+      set("created_to", context.created_to);
+      set("age_min", context.age_min);
+      set("age_max", context.age_max);
+    } else if (context.kind === "today") {
+      set("provider_id", context.providerId);
+      set("service_id", context.serviceId);
+    } else if (context.kind === "day") {
+      set("date", context.date);
+      set("provider_id", context.providerId);
+      set("service_id", context.serviceId);
+    }
+  }
+
+  const qs = query.toString();
+  return `/patients/${encodeURIComponent(patientId)}${qs ? `?${qs}` : ""}`;
+}

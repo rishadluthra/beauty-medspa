@@ -14,10 +14,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
-import { api } from "@/lib/api";
+import { api, patientDetailHref } from "@/lib/api";
 import { formatDate, formatPhone } from "@/lib/format";
+import type { PatientDetailContext } from "@/lib/types";
 
 const PAGE_SIZE = 25;
+const REBOOKING_CONTEXT: PatientDetailContext = { kind: "rebooking" };
 
 export function RebookingOpportunitiesTable() {
   const router = useRouter();
@@ -65,7 +67,7 @@ export function RebookingOpportunitiesTable() {
                 {data.items.map((item) => (
                   <tr
                     key={item.id}
-                    onClick={() => router.push(`/patients/${item.id}`)}
+                    onClick={() => router.push(patientDetailHref(item.id, REBOOKING_CONTEXT))}
                     className="cursor-pointer transition-colors hover:bg-brand-gold/5"
                   >
                     <td className="whitespace-nowrap px-4 py-3.5">{item.first_name} {item.last_name}</td>
