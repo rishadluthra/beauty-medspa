@@ -130,13 +130,23 @@ export default function PatientDetailPage() {
     return `/patients/${targetPatientId}${qs ? `?${qs}` : ""}`;
   };
 
+  // "Back to Front Desk" returns to the specific TAB the agent actually navigated in
+  // from, not always the page's own default tab -- `ctx` (see `PatientDetailContext`)
+  // already says which list that was, so it maps 1:1 onto the Front Desk page's own tab
+  // keys. No `ctx` at all (a direct link, a global-search result) falls back to the
+  // Front Desk page's own default tab, same as visiting `/patients` with no `?tab=`.
+  const TAB_FOR_CONTEXT: Record<string, string> = { today: "today", day: "calendar", rebooking: "rebooking", all: "all" };
+  const contextKind = searchParams.get("ctx");
+  const backTab = contextKind ? TAB_FOR_CONTEXT[contextKind] : undefined;
+  const backHref = backTab ? `/patients?tab=${backTab}` : "/patients";
+
   const initials = data ? `${data.patient.first_name[0]}${data.patient.last_name[0]}`.toUpperCase() : "";
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
-          href="/patients"
+          href={backHref}
           className="inline-flex items-center gap-1 text-sm text-brand-bg/70 transition-colors hover:text-brand-gold-dark"
         >
           ← Back to Front Desk

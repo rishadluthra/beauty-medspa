@@ -46,7 +46,8 @@
  * they read as one consistent control, not two different-looking ones.
  */
 
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
 import { CalendarView } from "@/components/patients/CalendarView";
 import { PatientFilters } from "@/components/patients/PatientFilters";
@@ -69,9 +70,40 @@ type TabKey = (typeof TABS)[number]["key"];
 
 const PATIENT_FILTERS_PAGE_SIZE = 25;
 
-/** Top-level route component for `/patients`. */
+function isTabKey(value: string | null): value is TabKey {
+  return TABS.some((t) => t.key === value);
+}
+
+/**
+ * Top-level route component for `/patients`. Wrapped in `Suspense` because it reads
+ * `useSearchParams()` (for the `?tab=` param above) -- required by Next.js for this
+ * route to still be statically prerendered rather than opting the whole page into
+ * client-side-only rendering.
+ */
 export default function PatientsPage() {
-  const [tab, setTab] = useState<TabKey>("today");
+  return (
+    <Suspense fallback={null}>
+      <PatientsPageContent />
+    </Suspense>
+  );
+}
+
+function PatientsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+
+  // The active tab lives in the URL (`?tab=...`), not just local state, so that clicking
+  // "Back to Front Desk" from a patient's detail page (see that page's `backHref`) can
+  // return to the specific tab the agent was actually on -- previously this page always
+  // mounted back on "Today's Appointments" regardless of where the agent had navigated
+  // from.
+  const [tab, setTabState] = useState<TabKey>(isTabKey(tabParam) ? tabParam : "today");
+
+  const setTab = (key: TabKey) => {
+    setTabState(key);
+    router.replace(`/patients?tab=${key}`, { scroll: false });
+  };
   const [patientFilters, setPatientFilters] = useState<PatientQueryParams>({
     page: 1,
     page_size: PATIENT_FILTERS_PAGE_SIZE,
