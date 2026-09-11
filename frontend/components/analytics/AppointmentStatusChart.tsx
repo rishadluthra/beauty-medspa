@@ -12,6 +12,7 @@ import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recha
 import { api } from "@/lib/api";
 import { STATUS_COLORS } from "@/lib/chartColors";
 import { formatLabel } from "@/lib/format";
+import { renderInsidePieLabel } from "@/lib/pieLabel";
 
 /** Fetches and renders the appointment-status breakdown as a pie chart. */
 export function AppointmentStatusChart() {
@@ -34,7 +35,8 @@ export function AppointmentStatusChart() {
       <h2 className="mb-4 text-center font-medium text-brand-dark">Appointment Status</h2>
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
-          <Pie data={chartData} dataKey="count" nameKey="status" outerRadius={100} label>
+          {/* Label drawn inside each slice (see SourceBreakdownChart for why, in more detail). */}
+          <Pie data={chartData} dataKey="count" nameKey="status" outerRadius={100} label={renderInsidePieLabel} labelLine={false}>
             {/*
               IMPORTANT: this Cell mapping deliberately iterates the ORIGINAL
               raw `data` array (lowercase statuses), not `chartData` (which

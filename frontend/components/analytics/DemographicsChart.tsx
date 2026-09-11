@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
+import { estimateAxisWidth } from "@/lib/chartAxis";
 import { BRAND } from "@/lib/chartColors";
 import { formatLabel } from "@/lib/format";
 
@@ -33,6 +34,13 @@ export function DemographicsChart() {
   // "18-24".)
   const genderData = data.gender_breakdown.map((entry) => ({ ...entry, gender: formatLabel(entry.gender) }));
 
+  // Estimated from the real max count in each dataset, not a fixed guess --
+  // a fixed 40px guess here still clipped the leading digit off a tick
+  // like "2,800" in production once the real patient count pushed past
+  // what that guess assumed.
+  const genderYAxisWidth = estimateAxisWidth(genderData.map((entry) => entry.count.toLocaleString()));
+  const ageYAxisWidth = estimateAxisWidth(data.age_buckets.map((entry) => entry.count.toLocaleString()));
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
@@ -41,7 +49,7 @@ export function DemographicsChart() {
           <BarChart data={genderData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="gender" tickMargin={8} />
-            <YAxis width={40} tickMargin={8} allowDecimals={false} />
+            <YAxis width={genderYAxisWidth} tickMargin={8} allowDecimals={false} />
             <Tooltip />
             <Bar dataKey="count" name="Patients" fill={BRAND.sage} />
           </BarChart>
@@ -53,7 +61,7 @@ export function DemographicsChart() {
           <BarChart data={data.age_buckets} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="bucket" tickMargin={8} />
-            <YAxis width={40} tickMargin={8} allowDecimals={false} />
+            <YAxis width={ageYAxisWidth} tickMargin={8} allowDecimals={false} />
             <Tooltip />
             <Bar dataKey="count" name="Patients" fill={BRAND.rose} />
           </BarChart>

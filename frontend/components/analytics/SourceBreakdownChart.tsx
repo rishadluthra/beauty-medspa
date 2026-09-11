@@ -11,6 +11,7 @@ import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recha
 
 import { api } from "@/lib/api";
 import { formatLabel } from "@/lib/format";
+import { renderInsidePieLabel } from "@/lib/pieLabel";
 import { getSourceChartColor } from "@/lib/sourceColors";
 
 /** Fetches and renders the patient-source breakdown as a pie chart. */
@@ -36,7 +37,15 @@ export function SourceBreakdownChart() {
       <h2 className="mb-4 text-center font-medium text-brand-dark">How Patients Find Us</h2>
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
-          <Pie data={chartData} dataKey="patient_count" nameKey="source" outerRadius={100} label>
+          {/*
+            `label={renderInsidePieLabel}` + `labelLine={false}` draws each
+            slice's count INSIDE the slice itself instead of Recharts'
+            default floating external label + connector line -- with six
+            slices packed tightly together, the external labels and their
+            connector lines were crowding each other and the legend below
+            the chart.
+          */}
+          <Pie data={chartData} dataKey="patient_count" nameKey="source" outerRadius={100} label={renderInsidePieLabel} labelLine={false}>
             {/*
               IMPORTANT: iterates the ORIGINAL raw `data` array (e.g.
               "in_person"), not `chartData` (formatLabel()'d to "In

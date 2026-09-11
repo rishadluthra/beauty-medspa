@@ -32,15 +32,24 @@ export function ComingUpStrip() {
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wider text-brand-bg/50">Coming Up</p>
-      <div className="flex flex-wrap gap-2">
+      {/*
+        A CSS grid (equal-width/equal-height cells) instead of the previous
+        `flex flex-wrap` row -- flex-wrap sized each pill to its own content,
+        so a short name ("Eric West") produced a visibly smaller pill than a
+        long one ("Christopher Smith") sitting right next to it, reading as
+        uneven/inconsistent. Every cell here is the same size regardless of
+        content, with `truncate` as the overflow fallback for a name that
+        doesn't fit rather than letting it grow the cell.
+      */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {data.items.map((item) => (
           <Link
             key={item.id}
             href={`/patients/${item.id}`}
-            className="rounded-full border border-brand-bg/20 bg-brand-bg/5 px-4 py-2 text-sm text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10"
+            className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-brand-bg/20 bg-brand-bg/5 px-3 py-2.5 text-center transition-colors hover:border-brand-gold hover:bg-brand-bg/10"
           >
-            <span className="font-medium">{item.first_name} {item.last_name}</span>
-            <span className="text-brand-bg/60"> · {formatDate(item.upcoming_appointment_date)}</span>
+            <span className="w-full truncate text-sm font-medium text-brand-bg">{item.first_name} {item.last_name}</span>
+            <span className="w-full truncate text-xs text-brand-bg/60">{formatDate(item.upcoming_appointment_date)}</span>
           </Link>
         ))}
       </div>

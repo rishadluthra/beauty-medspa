@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
+import { estimateAxisWidth } from "@/lib/chartAxis";
 import { BRAND } from "@/lib/chartColors";
 
 /** Fetches and renders provider appointment counts as a horizontal bar chart. */
@@ -22,12 +23,21 @@ export function ProviderUtilizationChart() {
   if (isLoading) return <p className="text-brand-bg/70">Loading provider utilization…</p>;
   if (!data || data.length === 0) return <p className="text-brand-bg/70">No provider data yet.</p>;
 
+  // Both computed from the real data, not fixed guesses -- a fixed 140px
+  // category width still clipped the leading "R" off "RF Skin Tightening"
+  // in the (otherwise identical) Top Services chart, and a fixed height
+  // left too little room per row once there were more than a handful of
+  // categories, silently hiding every other Y-axis label (see `interval`
+  // below).
+  const yAxisWidth = estimateAxisWidth(data.map((entry) => entry.provider_name));
+  const height = Math.max(240, data.length * 40 + 48);
+
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 text-center font-medium text-brand-dark">Provider Utilization</h2>
-      <ResponsiveContainer width="100%" height={320}>
+      <ResponsiveContainer width="100%" height={height}>
         {/*
-          No extra `margin.left` here -- `YAxis width={140}` already
+          No extra `margin.left` here -- `YAxis width={yAxisWidth}` already
           reserves the space its own category labels need, and stacking a
           separate left margin on top of that double-counted the gutter,
           pushing the bars themselves too far right.
@@ -35,7 +45,14 @@ export function ProviderUtilizationChart() {
         <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis type="number" tickMargin={8} allowDecimals={false} />
-          <YAxis type="category" dataKey="provider_name" width={140} tickMargin={8} />
+          {/*
+            `interval={0}` forces EVERY category tick to render. Recharts'
+            default tick interval silently skips labels it judges would
+            overlap given the available height -- with enough providers,
+            that was hiding every other name entirely rather than just
+            crowding them, which is worse than crowding.
+          */}
+          <YAxis type="category" dataKey="provider_name" width={yAxisWidth} tickMargin={8} interval={0} />
           <Tooltip />
           <Bar dataKey="appointment_count" name="Appointments" fill={BRAND.sage} />
         </BarChart>

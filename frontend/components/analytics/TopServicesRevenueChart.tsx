@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
+import { estimateAxisWidth } from "@/lib/chartAxis";
 import { BRAND } from "@/lib/chartColors";
 
 /**
@@ -41,12 +42,20 @@ export function TopServicesRevenueChart() {
     .sort((a, b) => b.revenue_cents - a.revenue_cents)
     .map((item) => ({ service_name: item.service_name, revenue: item.revenue_cents / 100 }));
 
+  // Both computed from the real data, not fixed guesses -- a fixed 140px
+  // category width clipped the leading "R" off "RF Skin Tightening" in
+  // production, and a fixed height left too little room per row once
+  // there were more than a handful of services, silently hiding every
+  // other Y-axis label (see `interval` below).
+  const yAxisWidth = estimateAxisWidth(chartData.map((entry) => entry.service_name));
+  const height = Math.max(240, chartData.length * 40 + 48);
+
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 text-center font-medium text-brand-dark">Top Services by Revenue</h2>
-      <ResponsiveContainer width="100%" height={320}>
+      <ResponsiveContainer width="100%" height={height}>
         {/*
-          No extra `margin.left` here -- `YAxis width={140}` already
+          No extra `margin.left` here -- `YAxis width={yAxisWidth}` already
           reserves the space its own category labels need, and stacking a
           separate left margin on top of that double-counted the gutter,
           pushing the bars themselves too far right.
@@ -62,7 +71,12 @@ export function TopServicesRevenueChart() {
             here since this chart's data is always numeric.
           */}
           <XAxis type="number" tickMargin={8} tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
-          <YAxis type="category" dataKey="service_name" width={140} tickMargin={8} />
+          {/*
+            `interval={0}` forces EVERY category tick to render -- Recharts'
+            default tick interval was silently skipping every other service
+            name once there were enough of them to risk overlapping.
+          */}
+          <YAxis type="category" dataKey="service_name" width={yAxisWidth} tickMargin={8} interval={0} />
           <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
           <Bar dataKey="revenue" name="Revenue" fill={BRAND.navyTeal} />
         </BarChart>

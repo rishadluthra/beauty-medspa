@@ -17,7 +17,6 @@ import type {
   OverviewStats,
   PatientDetailResponse,
   PatientListResponse,
-  PaymentStatusItem,
   ProviderListResponse,
   ProviderUtilizationItem,
   RebookingOpportunitiesResponse,
@@ -126,8 +125,6 @@ export const api = {
   getProviderUtilization: () => apiGet<ProviderUtilizationItem[]>("/api/analytics/provider-utilization"),
   /** Fetches appointment counts grouped by status, for the appointment-status chart. */
   getAppointmentStatus: () => apiGet<AppointmentStatusItem[]>("/api/analytics/appointment-status"),
-  /** Fetches payment counts grouped by status, for the payment-status chart. */
-  getPaymentStatus: () => apiGet<PaymentStatusItem[]>("/api/analytics/payment-status"),
   /** Fetches gender and age-bucket breakdowns, for the demographics chart. */
   getDemographics: () => apiGet<DemographicsResponse>("/api/analytics/demographics"),
 };

@@ -10,6 +10,16 @@
  * receiving data as props from this page. That means one chart's slow
  * query or fetch error doesn't block or break the others — each section of
  * the dashboard loads and fails independently.
+ *
+ * There used to be a Payment Status pie chart here too. Removed: this
+ * dataset's `Payment.status` is 100% "paid" (zero failed/pending, verified
+ * directly against the data), so the chart could only ever render as one
+ * single-color full circle -- it carried no information a reader could act
+ * on. The backend endpoint (`GET /api/analytics/payment-status`) and its
+ * repository function are left in place; only the frontend chart (and its
+ * now-unused `api.getPaymentStatus` client method) were removed, since a
+ * live, tested, reusable query is still useful for a future AI/NL-query
+ * consumer even without a current chart on top of it.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -17,7 +27,6 @@ import { useQuery } from "@tanstack/react-query";
 import { AppointmentStatusChart } from "@/components/analytics/AppointmentStatusChart";
 import { DemographicsChart } from "@/components/analytics/DemographicsChart";
 import { KpiCard } from "@/components/analytics/KpiCard";
-import { PaymentStatusChart } from "@/components/analytics/PaymentStatusChart";
 import { ProviderUtilizationChart } from "@/components/analytics/ProviderUtilizationChart";
 import { RevenueChart } from "@/components/analytics/RevenueChart";
 import { SourceBreakdownChart } from "@/components/analytics/SourceBreakdownChart";
@@ -76,13 +85,15 @@ export default function AnalyticsPage() {
         <ProviderUtilizationChart />
       </div>
 
+      {/*
+        Paired together (rather than each sitting alone in its own
+        `md:grid-cols-2` row) once Payment Status was removed -- see below
+        -- so neither chart leaves an awkward empty half-row on wider
+        screens.
+      */}
       <div className="grid gap-4 md:grid-cols-2">
         <TopServicesRevenueChart />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
         <AppointmentStatusChart />
-        <PaymentStatusChart />
       </div>
 
       <DemographicsChart />

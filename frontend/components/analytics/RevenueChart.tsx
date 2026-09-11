@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
+import { estimateAxisWidth } from "@/lib/chartAxis";
 import { BRAND } from "@/lib/chartColors";
 
 /** Fetches and renders revenue-over-time as a line chart, in dollars. */
@@ -26,6 +27,14 @@ export function RevenueChart() {
 
   // Convert integer cents (backend convention) to dollars for display.
   const chartData = data.map((point) => ({ period: point.period, revenue: point.revenue_cents / 100 }));
+
+  // Recharts auto-generates "nice" round tick values ABOVE the actual data
+  // max (e.g. a real max of $438,000 gets a $600,000 top tick) -- but that
+  // rounding-up essentially never adds an extra digit, so estimating from
+  // the real max value's formatted length is still an accurate proxy for
+  // the widest tick label Recharts will actually render.
+  const maxRevenue = Math.max(...chartData.map((point) => point.revenue));
+  const yAxisWidth = estimateAxisWidth([`$${Math.round(maxRevenue).toLocaleString()}`]);
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
@@ -43,12 +52,12 @@ export function RevenueChart() {
             is the fix — safe here since this chart's own data is always
             numeric.
 
-            `width={72}` is explicit rather than left at Recharts' default
-            (60px) -- a currency-formatted tick like "$25,000" is wider
-            than the plain integers the default width assumes, and was
-            getting clipped against the left edge of the chart without it.
+            `width={yAxisWidth}` is computed from the real data (see
+            above), not a fixed guess -- a fixed 72px guess here still
+            clipped the "$" off "$600,000" in production once real revenue
+            data pushed past what that guess assumed.
           */}
-          <YAxis width={72} tickMargin={8} tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
+          <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
           <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
           <Line type="monotone" dataKey="revenue" name="Revenue" stroke={BRAND.navyTeal} strokeWidth={2} dot={false} />
         </LineChart>

@@ -79,12 +79,6 @@ export interface AppointmentStatusItem {
   count: number;
 }
 
-/** Count of payments in a given status (pending/paid/failed). */
-export interface PaymentStatusItem {
-  status: string;
-  count: number;
-}
-
 /** Patient count for a single gender value, used in the demographics chart. */
 export interface GenderCount {
   gender: string;
