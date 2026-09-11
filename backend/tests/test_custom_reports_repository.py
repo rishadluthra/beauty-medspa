@@ -111,6 +111,89 @@ async def test_get_custom_report_data_unique_patient_count_by_service(db_session
     assert data[0].value == 2  # pat_1 counted once despite 2 visits
 
 
+async def test_get_custom_report_data_revenue_by_gender_by_month(db_session):
+    """Revenue by gender joins Payment -> Patient for the raw gender value (frontend formats it for display)."""
+    db_session.add_all([
+        make_patient(id="pat_1", gender="female"),
+        make_patient(id="pat_2", gender="male"),
+        make_provider(id="prv_1"), make_service(),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment(id="apt_1", patient_id="pat_1"),
+        make_appointment(id="apt_2", patient_id="pat_2"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_payment(id="pay_1", patient_id="pat_1", appointment_id="apt_1", provider_id="prv_1", amount=8000, status="paid", date=datetime(2025, 7, 1)),
+        make_payment(id="pay_2", patient_id="pat_2", appointment_id="apt_2", provider_id="prv_1", amount=12000, status="paid", date=datetime(2025, 7, 15)),
+    ])
+    await db_session.commit()
+
+    data = await get_custom_report_data(db_session, Metric.revenue_cents, Dimension.gender, TimeGrain.month)
+
+    by_key = {(p.period, p.dimension_value): p.value for p in data}
+    assert by_key[("2025-07", "female")] == 8000
+    assert by_key[("2025-07", "male")] == 12000
+
+
+async def test_get_custom_report_data_appointment_count_by_age_bucket_by_quarter(db_session):
+    """Appointment count by age bucket reuses the same 10-year bucketing as the Demographics chart."""
+    db_session.add_all([
+        # ~30 years old as of the test's real run date -> "25-34" bucket.
+        make_patient(id="pat_1", date_of_birth=datetime(1996, 1, 1)),
+        # ~50 years old -> "45-54" bucket.
+        make_patient(id="pat_2", date_of_birth=datetime(1976, 1, 1)),
+        make_provider(), make_service(),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment(id="apt_1", patient_id="pat_1"),
+        make_appointment(id="apt_2", patient_id="pat_2"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_1", start=datetime(2025, 2, 1, 9, 0), end=datetime(2025, 2, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_2", start=datetime(2025, 2, 10, 9, 0), end=datetime(2025, 2, 10, 9, 30)),
+    ])
+    await db_session.commit()
+
+    data = await get_custom_report_data(db_session, Metric.appointment_count, Dimension.age_bucket, TimeGrain.quarter)
+
+    by_key = {(p.period, p.dimension_value): p.value for p in data}
+    assert by_key[("2025-Q1", "25-34")] == 1
+    assert by_key[("2025-Q1", "45-54")] == 1
+
+
+async def test_get_custom_report_data_unique_patient_count_by_gender(db_session):
+    """Unique-patient count by gender still counts distinct patients, not distinct visits, per gender bucket."""
+    db_session.add_all([
+        make_patient(id="pat_1", gender="female"),
+        make_patient(id="pat_2", gender="female"),
+        make_provider(), make_service(),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment(id="apt_1", patient_id="pat_1"),
+        make_appointment(id="apt_2", patient_id="pat_1"),  # same patient, second visit
+        make_appointment(id="apt_3", patient_id="pat_2"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_1", start=datetime(2025, 8, 1, 9, 0), end=datetime(2025, 8, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_2", start=datetime(2025, 8, 15, 9, 0), end=datetime(2025, 8, 15, 9, 30)),
+        make_appointment_service(appointment_id="apt_3", start=datetime(2025, 8, 20, 9, 0), end=datetime(2025, 8, 20, 9, 30)),
+    ])
+    await db_session.commit()
+
+    data = await get_custom_report_data(db_session, Metric.unique_patient_count, Dimension.gender, TimeGrain.month)
+
+    assert len(data) == 1
+    assert data[0].period == "2025-08"
+    assert data[0].dimension_value == "female"
+    assert data[0].value == 2  # pat_1 counted once despite 2 visits
+
+
 async def test_create_list_and_delete_custom_report_roundtrip(db_session):
     """A created report is listed with its data, and can be deleted."""
     db_session.add_all([make_patient(id="pat_1"), make_provider(id="prv_1"), make_service()])

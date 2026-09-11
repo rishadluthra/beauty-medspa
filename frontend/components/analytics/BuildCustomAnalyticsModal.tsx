@@ -30,6 +30,8 @@ const DIMENSION_OPTIONS: { value: CustomReportDimension; label: string }[] = [
   { value: "provider", label: "Provider" },
   { value: "service", label: "Service" },
   { value: "source", label: "Marketing Source" },
+  { value: "gender", label: "Gender" },
+  { value: "age_bucket", label: "Age Group" },
 ];
 
 const TIME_GRAIN_OPTIONS: { value: CustomReportTimeGrain; label: string }[] = [

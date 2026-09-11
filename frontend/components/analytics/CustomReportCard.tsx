@@ -32,14 +32,15 @@ import type { CustomReport } from "@/lib/types";
 
 /** Pivots a report's flat point list into one row per period, with one column per dimension value. */
 function pivot(report: CustomReport): { rows: Record<string, string | number>[]; seriesNames: string[] } {
-  // `source` dimension values come straight from the backend's raw
-  // `Patient.source` enum ("in_person", not "In Person") -- provider/service
-  // dimension values are already human names (joined server-side against
-  // Provider.name/Service.name), so only `source` needs this. `formatLabel`
-  // is the same "in_person" -> "In Person" helper the rest of the Analytics
-  // page already uses (SourceBreakdownChart, DemographicsChart) for the
-  // exact same raw-enum-value problem.
-  const points = report.dimension === "source"
+  // `source`/`gender` dimension values come straight from the backend's raw
+  // enum columns ("in_person"/"male", not "In Person"/"Male") -- provider,
+  // service, and age_bucket values are already display-ready (provider/
+  // service are joined server-side against Provider.name/Service.name;
+  // age_bucket is already a label like "18-24"), so only source/gender need
+  // this. `formatLabel` is the same "in_person" -> "In Person" helper the
+  // rest of the Analytics page already uses (SourceBreakdownChart,
+  // DemographicsChart) for the exact same raw-enum-value problem.
+  const points = report.dimension === "source" || report.dimension === "gender"
     ? report.data.map((p) => ({ ...p, dimension_value: formatLabel(p.dimension_value) }))
     : report.data;
 

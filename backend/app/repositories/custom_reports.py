@@ -26,7 +26,7 @@ require joining tables a given metric doesn't need.
 import secrets
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Appointment, AppointmentService, CustomReport, Patient, Payment, Provider, Service
@@ -44,6 +44,23 @@ def _period_format(time_grain: TimeGrain) -> str:
     already uses for months, just one grain coarser.
     """
     return "YYYY-MM" if time_grain == TimeGrain.month else 'YYYY"-Q"Q'
+
+
+def _age_bucket_expr(date_of_birth_col):
+    """The same 10-year age bucketing `get_patient_demographics` uses, reused
+    here so the Age Group dimension produces identical bucket boundaries to
+    the fixed Demographics chart, rather than a second, possibly-drifting
+    definition of "18-24" etc.
+    """
+    age_years = extract("year", func.age(func.now(), date_of_birth_col))
+    return case(
+        (age_years < 25, "18-24"),
+        (age_years < 35, "25-34"),
+        (age_years < 45, "35-44"),
+        (age_years < 55, "45-54"),
+        (age_years < 65, "55-64"),
+        else_="65+",
+    )
 
 
 async def get_custom_report_data(
@@ -67,8 +84,14 @@ async def get_custom_report_data(
         elif dimension == Dimension.service:
             dim_value = Service.name.label("dimension_value")
             query = query.join(Service, Service.id == Payment.service_id)
-        else:  # source
+        elif dimension == Dimension.source:
             dim_value = Patient.source.label("dimension_value")
+            query = query.join(Patient, Patient.id == Payment.patient_id)
+        elif dimension == Dimension.gender:
+            dim_value = Patient.gender.label("dimension_value")
+            query = query.join(Patient, Patient.id == Payment.patient_id)
+        else:  # age_bucket
+            dim_value = _age_bucket_expr(Patient.date_of_birth).label("dimension_value")
             query = query.join(Patient, Patient.id == Payment.patient_id)
 
     elif metric == Metric.appointment_count:
@@ -81,11 +104,19 @@ async def get_custom_report_data(
         elif dimension == Dimension.service:
             dim_value = Service.name.label("dimension_value")
             query = query.join(Service, Service.id == AppointmentService.service_id)
-        else:  # source -- not on AppointmentService, so join up through Appointment -> Patient
-            dim_value = Patient.source.label("dimension_value")
+        else:
+            # source / gender / age_bucket all live on Patient, not
+            # AppointmentService, so each needs the same join up through
+            # Appointment -> Patient -- only the selected column differs.
             query = query.join(Appointment, Appointment.id == AppointmentService.appointment_id).join(
                 Patient, Patient.id == Appointment.patient_id
             )
+            if dimension == Dimension.source:
+                dim_value = Patient.source.label("dimension_value")
+            elif dimension == Dimension.gender:
+                dim_value = Patient.gender.label("dimension_value")
+            else:  # age_bucket
+                dim_value = _age_bucket_expr(Patient.date_of_birth).label("dimension_value")
 
     else:  # unique_patient_count
         # patient_id lives on Appointment, not AppointmentService, so this
@@ -103,9 +134,17 @@ async def get_custom_report_data(
         elif dimension == Dimension.service:
             dim_value = Service.name.label("dimension_value")
             query = query.join(Service, Service.id == AppointmentService.service_id)
-        else:  # source
-            dim_value = Patient.source.label("dimension_value")
+        else:
+            # source / gender / age_bucket all live on Patient; the join to
+            # Appointment already happened above (needed for patient_id
+            # regardless of dimension), so only the Patient join is new here.
             query = query.join(Patient, Patient.id == Appointment.patient_id)
+            if dimension == Dimension.source:
+                dim_value = Patient.source.label("dimension_value")
+            elif dimension == Dimension.gender:
+                dim_value = Patient.gender.label("dimension_value")
+            else:  # age_bucket
+                dim_value = _age_bucket_expr(Patient.date_of_birth).label("dimension_value")
 
     query = query.add_columns(dim_value).group_by(period, dim_value).order_by(period)
     rows = (await db.execute(query)).all()

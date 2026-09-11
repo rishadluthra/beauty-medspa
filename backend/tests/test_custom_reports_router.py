@@ -44,6 +44,30 @@ async def test_create_list_and_delete_custom_report_via_http(db_session):
     app.dependency_overrides.clear()
 
 
+async def test_create_custom_report_accepts_demographic_dimensions_via_http(db_session):
+    """The gender/age_bucket dimensions (added for demographics-over-time reports) parse correctly off the wire."""
+    app.dependency_overrides[get_db] = lambda: db_session
+    db_session.add_all([make_patient(id="pat_1", gender="female"), make_provider(id="prv_1"), make_service()])
+    await db_session.flush()
+    db_session.add(make_appointment(id="apt_1", patient_id="pat_1"))
+    await db_session.flush()
+    db_session.add(make_payment(id="pay_1", patient_id="pat_1", appointment_id="apt_1", provider_id="prv_1", amount=9000, status="paid", date=datetime(2025, 9, 1)))
+    await db_session.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/custom-reports",
+            json={"title": "Revenue by gender", "metric": "revenue_cents", "dimension": "gender", "time_grain": "month"},
+        )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["dimension"] == "gender"
+    assert body["data"] == [{"period": "2025-09", "dimension_value": "female", "value": 9000}]
+
+    app.dependency_overrides.clear()
+
+
 async def test_create_custom_report_rejects_invalid_metric(db_session):
     app.dependency_overrides[get_db] = lambda: db_session
 

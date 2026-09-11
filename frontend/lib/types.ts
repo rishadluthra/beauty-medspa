@@ -356,7 +356,7 @@ export interface ProviderListResponse {
 
 /** The fixed option lists the "Build Custom Analytics" modal offers -- must stay in sync with the backend's `Metric`/`Dimension`/`TimeGrain` enums. */
 export type CustomReportMetric = "appointment_count" | "revenue_cents" | "unique_patient_count";
-export type CustomReportDimension = "provider" | "service" | "source";
+export type CustomReportDimension = "provider" | "service" | "source" | "gender" | "age_bucket";
 export type CustomReportTimeGrain = "month" | "quarter";
 
 /** One (period, dimension value) cell of a custom report's pivot data -- one line/series point on its chart. */

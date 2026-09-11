@@ -26,6 +26,8 @@ class Dimension(str, Enum):
     provider = "provider"
     service = "service"
     source = "source"
+    gender = "gender"
+    age_bucket = "age_bucket"
 
 
 class TimeGrain(str, Enum):
