@@ -10,6 +10,8 @@
  */
 
 import type {
+  AppointmentDetailContext,
+  AppointmentDetailPageResponse,
   AvailabilityResponse,
   CalendarMonthResponse,
   DemographicsResponse,
@@ -107,11 +109,11 @@ export const api = {
    * throwing) when the patient doesn't exist, so the detail page can
    * render a clean "not found" state instead of a generic error.
    *
-   * `params`, when given, are the same `ctx`/`sort`/`search`/.../`service_id`/`date`
-   * query keys `patientDetailHref` encodes into the URL -- the detail page just
-   * forwards its own `useSearchParams()` straight through here rather than
-   * re-deriving a typed context, so a Previous/Next hop can never drift from
-   * whatever context the agent actually navigated in with.
+   * `params`, when given, are the same `ctx`/`sort`/`search`/.../`age_max` query keys
+   * `patientDetailHref` encodes into the URL -- the detail page just forwards its own
+   * `useSearchParams()` straight through here rather than re-deriving a typed context,
+   * so a Previous/Next hop can never drift from whatever context the agent actually
+   * navigated in with.
    */
   getPatientDetail: async (
     id: string, params?: Record<string, string | number | undefined>,
@@ -126,6 +128,26 @@ export const api = {
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`API request failed: ${response.status} ${response.statusText}`);
     return response.json() as Promise<PatientDetailResponse>;
+  },
+  /**
+   * Fetches one appointment's full detail, for the Appointment Detail page -- the
+   * drill-down from a Today's Appointments / Calendar schedule row (see
+   * `appointmentDetailHref` for the query params this accepts, forwarded the same way
+   * `getPatientDetail` forwards its own). Resolves to `null` on a 404.
+   */
+  getAppointmentDetail: async (
+    id: string, params?: Record<string, string | number | undefined>,
+  ): Promise<AppointmentDetailPageResponse | null> => {
+    const url = new URL(`${API_BASE_URL}/api/appointments/${encodeURIComponent(id)}`);
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
+      }
+    }
+    const response = await fetch(url.toString());
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    return response.json() as Promise<AppointmentDetailPageResponse>;
   },
   /** Fetches the Analytics page's top-line KPI summary. */
   getOverview: () => apiGet<OverviewStats>("/api/analytics/overview"),
@@ -142,11 +164,11 @@ export const api = {
 };
 
 /**
- * Builds the `/patients/{id}` URL for linking to a patient from a specific source list,
- * encoding `context` into the query string with the exact key names
- * `api.getPatientDetail`/the backend expect (`ctx`, `sort`, `search`, ..., `provider_id`,
- * `service_id`, `date`) -- so the destination page's Previous/Next buttons walk that
- * same list's order instead of the global default (see `PatientDetailContext`).
+ * Builds the `/patients/{id}` URL for linking to a patient from a specific source list
+ * (All Patients or Rebooking Opportunities), encoding `context` into the query string
+ * with the exact key names `api.getPatientDetail`/the backend expect (`ctx`, `sort`,
+ * `search`, ..., `age_max`) -- so the destination page's Previous/Next buttons walk
+ * that same list's order instead of the global default (see `PatientDetailContext`).
  *
  * Every list/table component that links out to a patient should build its link through
  * this helper rather than a bare `/patients/${id}` template string, so a new list added
@@ -169,16 +191,31 @@ export function patientDetailHref(patientId: string, context?: PatientDetailCont
       set("created_to", context.created_to);
       set("age_min", context.age_min);
       set("age_max", context.age_max);
-    } else if (context.kind === "today") {
-      set("provider_id", context.providerId);
-      set("service_id", context.serviceId);
-    } else if (context.kind === "day") {
-      set("date", context.date);
-      set("provider_id", context.providerId);
-      set("service_id", context.serviceId);
     }
   }
 
   const qs = query.toString();
   return `/patients/${encodeURIComponent(patientId)}${qs ? `?${qs}` : ""}`;
+}
+
+/**
+ * Builds the `/appointments/{id}` URL for linking to an appointment from a Today's
+ * Appointments / Calendar schedule row, encoding `context` into the query string with
+ * the exact key names `api.getAppointmentDetail`/the backend expect (`ctx`,
+ * `provider_id`, `service_id`, `date`) -- so the destination's Previous/Next buttons
+ * walk that same schedule window (see `AppointmentDetailContext`).
+ */
+export function appointmentDetailHref(appointmentId: string, context: AppointmentDetailContext): string {
+  const query = new URLSearchParams();
+  const set = (key: string, value: string | number | undefined) => {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  };
+
+  set("ctx", context.kind);
+  set("provider_id", context.providerId);
+  set("service_id", context.serviceId);
+  if (context.kind === "day") set("date", context.date);
+
+  const qs = query.toString();
+  return `/appointments/${encodeURIComponent(appointmentId)}${qs ? `?${qs}` : ""}`;
 }

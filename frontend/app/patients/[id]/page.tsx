@@ -16,45 +16,10 @@ import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import { KpiCard } from "@/components/analytics/KpiCard";
+import { AppointmentCard } from "@/components/patients/AppointmentCard";
 import { SourceBadge } from "@/components/patients/SourceBadge";
 import { api } from "@/lib/api";
-import { APPOINTMENT_STATUS_COLORS, PAYMENT_STATUS_COLORS } from "@/lib/chartColors";
-import { calculateAge, formatCents, formatDate, formatLabel, formatPhone, formatTimeRange } from "@/lib/format";
-
-/**
- * A status pill for either an appointment's own status or its payment's
- * status. These are two *different* fields that happen to share the same
- * three-ish value shape (a "good", "in-progress", and "bad" state), so
- * they're deliberately given different color maps (`APPOINTMENT_STATUS_COLORS`
- * vs `PAYMENT_STATUS_COLORS`) AND different visual weight — `variant="solid"`
- * for the appointment's own status (the primary fact about the card) and
- * `variant="outline"` for its payment status (a secondary, related fact) —
- * so a "Confirmed" appointment sitting next to a "Paid" payment never reads
- * as the same badge repeated twice.
- */
-function StatusPill({
-  status,
-  colors,
-  variant = "solid",
-}: {
-  status: string;
-  colors: Record<string, string>;
-  variant?: "solid" | "outline";
-}) {
-  const color = colors[status] ?? "#64748b";
-  if (variant === "outline") {
-    return (
-      <span className="inline-block rounded-full border px-2.5 py-1 text-xs font-medium" style={{ borderColor: color, color }}>
-        {formatLabel(status)}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-block rounded-full px-2.5 py-1 text-xs font-medium text-white" style={{ backgroundColor: color }}>
-      {formatLabel(status)}
-    </span>
-  );
-}
+import { calculateAge, formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
 
 /** One icon+text fact in the header's contact-info row (phone, email, address, joined date). */
 function InfoItem({ icon, children }: { icon: ReactNode; children: ReactNode }) {
@@ -109,33 +74,14 @@ export default function PatientDetailPage() {
     queryFn: () => api.getPatientDetail(patientId, Object.fromEntries(searchParams.entries())),
   });
 
-  /**
-   * Builds a Previous/Next destination: the same query string this page was loaded
-   * with, EXCEPT `service_id` is swapped for `serviceId` when the response supplied one
-   * (only `ctx=today`/`ctx=day` ever do -- see `previous_service_id`/`next_service_id`
-   * on `PatientDetailResponse`). Those two contexts rank against the specific schedule
-   * row that was clicked, not just a patient id; blindly re-appending the OLD
-   * `service_id` on every hop pins every future request to that first row forever, so a
-   * second "Next" click re-ranks from the same stale position and resolves right back to
-   * the patient already on screen -- pushing to a URL that's already loaded, which does
-   * nothing (reported as "Next gets stuck after one click"). `serviceId` is `null` for
-   * "all"/"rebooking" contexts (whose anchor is the patient id itself, already fresh on
-   * every hop), so this is a no-op for them -- there's no `service_id` param to begin
-   * with, and none gets added.
-   */
-  const hrefFor = (targetPatientId: string, serviceId: number | null): string => {
-    const nextParams = new URLSearchParams(searchParams.toString());
-    if (serviceId !== null) nextParams.set("service_id", String(serviceId));
-    const qs = nextParams.toString();
-    return `/patients/${targetPatientId}${qs ? `?${qs}` : ""}`;
-  };
-
   // "Back to Front Desk" returns to the specific TAB the agent actually navigated in
-  // from, not always the page's own default tab -- `ctx` (see `PatientDetailContext`)
-  // already says which list that was, so it maps 1:1 onto the Front Desk page's own tab
-  // keys. No `ctx` at all (a direct link, a global-search result) falls back to the
-  // Front Desk page's own default tab, same as visiting `/patients` with no `?tab=`.
-  const TAB_FOR_CONTEXT: Record<string, string> = { today: "today", day: "calendar", rebooking: "rebooking", all: "all" };
+  // from, not always the page's own default tab -- `ctx` (see `PatientDetailContext`,
+  // "all" or "rebooking" -- a Today's/Calendar schedule row goes to the Appointment
+  // Detail page instead, not here) already says which list that was, so it maps 1:1
+  // onto the Front Desk page's own tab keys. No `ctx` at all (a direct link, a
+  // global-search result) falls back to the Front Desk page's own default tab, same as
+  // visiting `/patients` with no `?tab=`.
+  const TAB_FOR_CONTEXT: Record<string, string> = { rebooking: "rebooking", all: "all" };
   const contextKind = searchParams.get("ctx");
   const backTab = contextKind ? TAB_FOR_CONTEXT[contextKind] : undefined;
   const backHref = backTab ? `/patients?tab=${backTab}` : "/patients";
@@ -153,21 +99,19 @@ export default function PatientDetailPage() {
         </Link>
 
         {/*
-          Previous/Next walk whichever source list the agent navigated in
-          from (see `contextQuery` above) -- Today's schedule order,
-          Rebooking's most-recent-visit-first order, or All Patients' own
-          active filter/sort -- falling back to the old fixed
-          (last_name, first_name) order when there's no list context at
-          all (a direct link, a global-search result). Computed
-          server-side in the same request as the rest of this page's data
-          (no extra round-trip). `hrefFor` re-appends this same query
-          string to the pushed URL, swapping in the response's own
-          previous/next_service_id when there is one (see `hrefFor`'s own
-          comment for why that swap matters), so clicking through several
-          patients in a row keeps walking that same list instead of
-          getting stuck after one hop. Disabled rather than hidden at
-          either end of that ordering, so the control stays in a
-          predictable place instead of the layout shifting.
+          Previous/Next walk whichever source list the agent navigated in from (see
+          `contextQuery` above) -- Rebooking's most-recent-visit-first order, or All
+          Patients' own active filter/sort -- falling back to the old fixed
+          (last_name, first_name) order when there's no list context at all (a direct
+          link, a global-search result). Computed server-side in the same request as
+          the rest of this page's data (no extra round-trip). The same query string is
+          re-appended to the pushed URL, so clicking through several patients in a row
+          keeps walking that same list. Both contexts anchor on the patient id itself
+          (the page's own URL param, already fresh on every hop) rather than a specific
+          row, unlike the Appointment Detail page's Previous/Next -- see that page for
+          why its own anchor has to be handled differently. Disabled rather than hidden
+          at either end of that ordering, so the control stays in a predictable place
+          instead of the layout shifting.
         */}
         {data && (
           <div className="flex gap-2 text-sm">
@@ -176,7 +120,7 @@ export default function PatientDetailPage() {
               disabled={!data.previous_patient_id}
               onClick={() =>
                 data.previous_patient_id &&
-                router.push(hrefFor(data.previous_patient_id, data.previous_service_id))
+                router.push(`/patients/${data.previous_patient_id}${contextQuery ? `?${contextQuery}` : ""}`)
               }
               className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
             >
@@ -187,7 +131,7 @@ export default function PatientDetailPage() {
               disabled={!data.next_patient_id}
               onClick={() =>
                 data.next_patient_id &&
-                router.push(hrefFor(data.next_patient_id, data.next_service_id))
+                router.push(`/patients/${data.next_patient_id}${contextQuery ? `?${contextQuery}` : ""}`)
               }
               className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
             >
@@ -256,71 +200,13 @@ export default function PatientDetailPage() {
             {data.appointments.length === 0 && <p className="text-brand-bg/70">No appointments on record.</p>}
 
             {data.appointments.map((appointment) => (
-              <div
+              <AppointmentCard
                 key={appointment.id}
-                className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  {/*
-                    `appointment_date` (the actual scheduled visit time,
-                    derived from its services) is what's shown here — NOT
-                    `created_date` (when the booking record was entered,
-                    which can be a completely different, unrelated date).
-                    Showing created_date here was a real bug: a patient's
-                    upcoming visit could show as "no appointment" on this
-                    page simply because the booking had been made months
-                    earlier under a different date.
-                  */}
-                  <p className="font-medium">
-                    {appointment.appointment_date ? formatDate(appointment.appointment_date) : "Not yet scheduled"}
-                  </p>
-                  {/*
-                    Explicitly labeled "Status" — pending/confirmed/cancelled
-                    describes the appointment's own lifecycle (was it booked
-                    and will it happen), which is a different fact from
-                    whether it was paid for below, and needs the label to
-                    not be confused with it.
-                  */}
-                  <span className="flex items-center gap-1.5 text-xs text-brand-dark/50">
-                    Status
-                    <StatusPill status={appointment.status} colors={APPOINTMENT_STATUS_COLORS} variant="solid" />
-                  </span>
-                </div>
-
-                {/*
-                  A cancelled or brand-new appointment can have zero
-                  AppointmentService rows (nothing was ever performed on
-                  it), so this section is conditional rather than always
-                  rendering an empty list.
-                */}
-                {appointment.services.length > 0 && (
-                  <ul className="mt-3 divide-y divide-brand-dark/10 text-sm">
-                    {appointment.services.map((service, index) => (
-                      <li key={index} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                        <div>
-                          <p className="font-medium">{service.service_name}</p>
-                          <p className="text-brand-dark/60">
-                            {service.provider_name} · {formatTimeRange(service.start, service.end)}
-                          </p>
-                        </div>
-                        <p className="text-brand-dark/80">{formatCents(service.price_cents)}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-brand-dark/10 pt-3 text-sm">
-                  <span className="text-brand-dark/60">Payment</span>
-                  {appointment.payment ? (
-                    <span className="flex items-center gap-2">
-                      {formatCents(appointment.payment.amount_cents)} · {formatLabel(appointment.payment.method)}
-                      <StatusPill status={appointment.payment.status} colors={PAYMENT_STATUS_COLORS} variant="outline" />
-                    </span>
-                  ) : (
-                    <span className="text-brand-dark/40">Unpaid</span>
-                  )}
-                </div>
-              </div>
+                status={appointment.status}
+                appointmentDate={appointment.appointment_date}
+                services={appointment.services}
+                payment={appointment.payment}
+              />
             ))}
           </div>
         </>

@@ -151,18 +151,6 @@ export interface PatientDetailResponse {
    */
   previous_patient_id: string | null;
   next_patient_id: string | null;
-  /**
-   * Only set for `ctx=today`/`ctx=day`: the neighboring row's own `AppointmentService`
-   * id, NOT just its patient. Those two contexts rank against a specific schedule row
-   * (a patient can have more than one service the same day), so the row that was
-   * actually clicked has to stay pinned down across hops -- this is what the detail
-   * page uses to update its `service_id` query param when pushing to Previous/Next, so
-   * a second click re-ranks from the new row instead of the stale original one. `null`
-   * for every other context, whose anchor is the patient id itself (already fresh on
-   * every hop since it's the page's own URL param).
-   */
-  previous_service_id: number | null;
-  next_service_id: number | null;
 }
 
 /**
@@ -170,8 +158,14 @@ export interface PatientDetailResponse {
  * buttons can walk that same list's own order instead of always the global default --
  * see the backend's `PatientListContext` for the full contract. Every list that links to
  * `/patients/{id}` builds one of these and encodes it into the URL's query string
- * (`patientContextToQuery` below); the detail page reads it back out and forwards it to
- * `api.getPatientDetail`.
+ * (`patientDetailHref` in `lib/api.ts`); the detail page reads it back out and forwards
+ * it to `api.getPatientDetail`.
+ *
+ * There used to be `kind="today"`/`"day"` variants here too. Per client feedback, a
+ * Today's Appointments / Calendar schedule row now links to the Appointment Detail page
+ * instead (see {@link AppointmentDetailContext}) -- those schedules are one row per
+ * scheduled *service*, not per patient, so "next" should mean "the next appointment,"
+ * not "the next patient" (who could be the same person twice).
  */
 export type PatientDetailContext =
   | {
@@ -185,13 +179,25 @@ export type PatientDetailContext =
       age_min?: number;
       age_max?: number;
     }
-  | { kind: "today"; providerId?: string; serviceId: number }
-  | { kind: "day"; date: string; providerId?: string; serviceId: number }
   | { kind: "rebooking" };
+
+/**
+ * Which schedule window (Today's Appointments, or a specific Calendar day) a schedule
+ * row navigation came from, so the Appointment Detail page's Previous/Next buttons walk
+ * that same schedule -- see the backend's `ScheduleContext`. `serviceId` identifies the
+ * exact row clicked (an appointment can have more than one service scheduled at
+ * different times), used both for ranking and to highlight that row on the destination
+ * page. Encoded into the URL by `appointmentDetailHref` in `lib/api.ts`.
+ */
+export type AppointmentDetailContext =
+  | { kind: "today"; providerId?: string; serviceId: number }
+  | { kind: "day"; date: string; providerId?: string; serviceId: number };
 
 /** One scheduled service occurring "today", as returned by `GET /api/patients/today`. One row per service, not per patient. */
 export interface TodaysAppointmentItem {
   id: number;
+  /** The Appointment this service row belongs to -- what a schedule row links to now (the Appointment Detail page). */
+  appointment_id: string;
   patient_id: string;
   patient_name: string;
   phone: string;
@@ -200,6 +206,32 @@ export interface TodaysAppointmentItem {
   start: string;
   end: string;
   status: string;
+}
+
+/** Just enough of the patient's identity for the Appointment Detail page's compact summary strip. */
+export interface AppointmentPatientSummary {
+  id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+}
+
+/** Response for `GET /api/appointments/{id}`: one appointment's full detail. */
+export interface AppointmentDetailPageResponse {
+  id: string;
+  status: string;
+  appointment_date: string | null;
+  created_date: string;
+  services: AppointmentServiceItem[];
+  payment: PaymentSummary | null;
+  patient: AppointmentPatientSummary;
+  /** The clicked service row's own start time, for bolding that line among `services` when there's more than one. */
+  highlighted_service_start: string | null;
+  previous_appointment_id: string | null;
+  previous_service_id: number | null;
+  next_appointment_id: string | null;
+  next_service_id: number | null;
 }
 
 /** Paginated envelope for the Today's Appointments dashboard. */

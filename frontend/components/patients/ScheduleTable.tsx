@@ -10,8 +10,8 @@
 
 import { useRouter } from "next/navigation";
 
-import { patientDetailHref } from "@/lib/api";
-import type { PatientDetailContext, TodaysAppointmentsResponse } from "@/lib/types";
+import { appointmentDetailHref } from "@/lib/api";
+import type { AppointmentDetailContext, TodaysAppointmentsResponse } from "@/lib/types";
 import { APPOINTMENT_STATUS_COLORS } from "@/lib/chartColors";
 import { formatLabel, formatPhone, formatTimeRange } from "@/lib/format";
 
@@ -27,9 +27,9 @@ interface Props {
   /**
    * Which schedule this table is showing -- "today" (`TodaysAppointmentsTable`) or a
    * specific calendar day (`CalendarView`'s drill-down) -- plus whatever provider filter
-   * is active, so a row's link-out scopes the destination's Previous/Next buttons to
-   * this same schedule (see `PatientDetailContext`). `date` is required for "day" (the
-   * specific day being viewed) and ignored for "today".
+   * is active, so a row's link-out scopes the destination Appointment Detail page's
+   * Previous/Next buttons to this same schedule (see `AppointmentDetailContext`). `date`
+   * is required for "day" (the specific day being viewed) and ignored for "today".
    */
   contextKind: "today" | "day";
   providerId: string | undefined;
@@ -54,9 +54,9 @@ export function ScheduleTable({
   const router = useRouter();
 
   // `serviceId` (the specific AppointmentService row, i.e. `item.id`) is filled in per
-  // row below -- a patient can have more than one service on the same schedule, so the
-  // row actually clicked has to be pinned down, not just the patient.
-  const contextFor = (serviceId: number): PatientDetailContext =>
+  // row below -- an appointment can have more than one service on the same schedule, so
+  // the row actually clicked has to be pinned down, not just the appointment.
+  const contextFor = (serviceId: number): AppointmentDetailContext =>
     contextKind === "today"
       ? { kind: "today", providerId, serviceId }
       : { kind: "day", date: date as string, providerId, serviceId };
@@ -105,7 +105,7 @@ export function ScheduleTable({
                 {data.items.map((item) => (
                   <tr
                     key={item.id}
-                    onClick={() => router.push(patientDetailHref(item.patient_id, contextFor(item.id)))}
+                    onClick={() => router.push(appointmentDetailHref(item.appointment_id, contextFor(item.id)))}
                     className="cursor-pointer transition-colors hover:bg-brand-gold/5"
                   >
                     <td className="whitespace-nowrap px-4 py-3.5">{formatTimeRange(item.start, item.end)}</td>
@@ -130,7 +130,7 @@ export function ScheduleTable({
             {data.items.map((item) => (
               <div
                 key={item.id}
-                onClick={() => router.push(patientDetailHref(item.patient_id, contextFor(item.id)))}
+                onClick={() => router.push(appointmentDetailHref(item.appointment_id, contextFor(item.id)))}
                 className="cursor-pointer rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10"
               >
                 <div className="flex items-start justify-between gap-2">

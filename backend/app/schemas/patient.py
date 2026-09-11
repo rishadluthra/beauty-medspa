@@ -116,14 +116,6 @@ class PatientDetailResponse(BaseModel):
     appointments: list[AppointmentDetail]
     previous_patient_id: str | None
     next_patient_id: str | None
-    # Populated only for kind="today"/"day" contexts, whose ranking anchor is a specific
-    # schedule row rather than a patient id (a patient can have more than one service the
-    # same day). The frontend needs the actual neighboring row's id, not just its patient,
-    # to advance the anchor on the NEXT hop -- otherwise Prev/Next re-ranks against the
-    # same stale row forever and gets stuck after one click. `None` for every other
-    # context, whose anchor is the patient id itself (always fresh on each hop already).
-    previous_service_id: int | None = None
-    next_service_id: int | None = None
 
 
 class TodaysAppointmentItem(BaseModel):
@@ -135,6 +127,10 @@ class TodaysAppointmentItem(BaseModel):
     """
 
     id: int  # the AppointmentService row's own surrogate id, so the frontend has a stable key per row
+    # The Appointment this service row belongs to -- what a schedule row actually links
+    # to now (the Appointment Detail page), since Today's/Calendar's schedule is
+    # appointment-centric, not patient-centric like All Patients/Rebooking.
+    appointment_id: str
     patient_id: str
     patient_name: str
     phone: str

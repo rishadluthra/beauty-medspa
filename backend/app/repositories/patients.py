@@ -73,27 +73,26 @@ class PatientFilters:
 class PatientListContext:
     """Which source list a Patient Detail page was navigated *from*, and that list's own
     current filter/sort/scope -- so `get_patient_detail`'s Previous/Next buttons walk the
-    same order the agent was actually looking at (Today's schedule, the Rebooking
-    worklist, a filtered/sorted All Patients view), not always one fixed global order.
+    same order the agent was actually looking at (the Rebooking worklist, a
+    filtered/sorted All Patients view), not always one fixed global order.
 
     `kind="all"` with the dataclass's own defaults (no filters, sort="name") reproduces
     exactly the old fixed global `(last_name, first_name, id)` order -- so a direct link,
     a global-search result, or any other entry point with no real list context at all can
     simply omit this argument and still get sane, deterministic behavior. An unrecognized
     `kind` value falls back the same way, in `get_patient_detail` below.
+
+    There used to be `kind="today"`/`"day"` variants too, for Today's Appointments and
+    the Calendar day drill-down. Those schedules are one row per scheduled *service*, not
+    per patient (a patient can have more than one service the same day) -- per client
+    feedback, clicking a schedule row now goes to a dedicated Appointment Detail page
+    (`app.repositories.appointments.get_appointment_detail`) instead of this generic,
+    all-history Patient Detail page, so nothing constructs those two kinds here anymore.
     """
 
     kind: str = "all"
-    # kind == "all"
     filters: PatientFilters = field(default_factory=PatientFilters)
     sort: str = "name"
-    # kind == "today" or "day": which AppointmentService row was actually clicked (a
-    # patient can have more than one service on the same day), and which provider the
-    # schedule was narrowed to, if any.
-    provider_id: str | None = None
-    service_id: int | None = None
-    # kind == "day" only
-    target_date: date | None = None
 
 
 def _payment_totals_subquery():
@@ -423,27 +422,7 @@ async def get_patient_detail(
     # global-search result (neither of which has a real list to scope to)
     # still gets sane, deterministic neighbors.
     context = context or PatientListContext()
-    # previous_service_id/next_service_id are only ever populated for kind="today"/"day":
-    # those are the only contexts whose ranking anchor is a specific schedule ROW rather
-    # than the patient id itself (a patient can have more than one service the same day),
-    # so the frontend needs the actual neighboring row's id to advance the anchor on the
-    # NEXT hop -- see `_neighbors_in_schedule` for why reusing the same stale service_id
-    # across hops made Next/Prev get stuck after one click. "all"/"rebooking" anchor on
-    # `patient_id` alone, which is already fresh on every hop (it's the page's own path
-    # param), so those simply leave both fields `None`.
-    previous_service_id: int | None = None
-    next_service_id: int | None = None
-    if context.kind == "today":
-        reference_now = await get_reference_now(db)
-        previous_patient_id, previous_service_id, next_patient_id, next_service_id = await _neighbors_in_schedule(
-            db, context.service_id, reference_now, reference_now + timedelta(days=1), context.provider_id,
-        )
-    elif context.kind == "day" and context.target_date is not None:
-        start_of_day = datetime.combine(context.target_date, time.min)
-        previous_patient_id, previous_service_id, next_patient_id, next_service_id = await _neighbors_in_schedule(
-            db, context.service_id, start_of_day, start_of_day + timedelta(days=1), context.provider_id,
-        )
-    elif context.kind == "rebooking":
+    if context.kind == "rebooking":
         previous_patient_id, next_patient_id = await _neighbors_in_rebooking(db, patient_id)
     else:
         previous_patient_id, next_patient_id = await _neighbors_in_all_patients(
@@ -461,8 +440,6 @@ async def get_patient_detail(
         appointments=appointment_items,
         previous_patient_id=previous_patient_id,
         next_patient_id=next_patient_id,
-        previous_service_id=previous_service_id,
-        next_service_id=next_service_id,
     )
 
 
@@ -514,7 +491,7 @@ async def _list_schedule_between(
     """
     query = (
         select(
-            AppointmentService.id, Patient.id, Patient.first_name, Patient.last_name, Patient.phone,
+            AppointmentService.id, Appointment.id, Patient.id, Patient.first_name, Patient.last_name, Patient.phone,
             Service.name, Provider.first_name, Provider.last_name,
             AppointmentService.start, AppointmentService.end, Appointment.status,
         )
@@ -529,7 +506,8 @@ async def _list_schedule_between(
         )
         # `.id` breaks ties between services starting at the exact same
         # timestamp -- common in this seed data -- so the display order here
-        # and the row ranking in `_neighbors_in_schedule` always agree.
+        # and the row ranking in `app.repositories.appointments`'s Previous/Next
+        # (for the Appointment Detail page a schedule row links to) always agree.
         .order_by(AppointmentService.start.asc(), AppointmentService.id.asc())
     )
     if provider_id:
@@ -541,71 +519,17 @@ async def _list_schedule_between(
 
     items = [
         TodaysAppointmentItem(
-            id=service_id, patient_id=patient_id, patient_name=f"{first_name} {last_name}", phone=phone,
+            id=service_id, appointment_id=appointment_id, patient_id=patient_id,
+            patient_name=f"{first_name} {last_name}", phone=phone,
             service_name=service_name, provider_name=f"{provider_first} {provider_last}",
             start=start, end=end, status=status,
         )
-        for service_id, patient_id, first_name, last_name, phone, service_name, provider_first, provider_last, start, end, status in rows
+        for service_id, appointment_id, patient_id, first_name, last_name, phone, service_name, provider_first, provider_last, start, end, status in rows
     ]
 
     return TodaysAppointmentsResponse(
         items=items, total=total, page=page, page_size=page_size, reference_date=reference_date,
     )
-
-
-async def _neighbors_in_schedule(
-    db: AsyncSession, service_id: int | None, start_of_day: datetime, end_of_day: datetime, provider_id: str | None,
-) -> tuple[str | None, int | None, str | None, int | None]:
-    """Previous/Next for `get_patient_detail`'s `kind="today"`/`"day"` contexts: the
-    patient AND the specific `AppointmentService` row belonging to the schedule slot
-    immediately before/after `service_id`, in the same `[start_of_day, end_of_day)` window
-    `_list_schedule_between` displays (same filters, same `(start, id)` order).
-
-    Returns `(previous_patient_id, previous_service_id, next_patient_id, next_service_id)`.
-    The *_service_id values matter just as much as the *_patient_id ones: the frontend
-    needs the actual neighboring row's id to use as the anchor for the NEXT hop (e.g.
-    clicking Next again from there) -- if it kept reusing the original `service_id` it
-    started from instead, every subsequent hop would be re-ranked against that same stale
-    row forever, which is exactly what produced the "Next gets stuck after one click" bug
-    this function's contract exists to prevent: with a stale anchor, the *second* click's
-    "current position" is still the *first* row, so "next" resolves back to the patient
-    already on screen -- clicking Next again then pushes to a URL that's already loaded,
-    which does nothing.
-
-    `service_id` -- not just the current patient's id -- identifies the exact row that was
-    clicked, because a patient can have more than one service scheduled the same day; using
-    only the patient id would leave "which of their rows are we walking from" ambiguous.
-    Returns all `None`s if `service_id` doesn't resolve to a row in this window (e.g. no
-    `service_id` was given at all, such as a stale/malformed link) -- disabling the
-    buttons rather than guessing.
-    """
-    base = (
-        select(AppointmentService.id, Appointment.patient_id)
-        .join(Appointment, Appointment.id == AppointmentService.appointment_id)
-        .where(
-            Appointment.status != "cancelled",
-            AppointmentService.start >= start_of_day,
-            AppointmentService.start < end_of_day,
-        )
-    )
-    if provider_id:
-        base = base.where(AppointmentService.provider_id == provider_id)
-    ranked = base.add_columns(
-        func.row_number().over(order_by=(AppointmentService.start.asc(), AppointmentService.id.asc())).label("rn")
-    ).subquery()
-
-    current_rn = (await db.execute(select(ranked.c.rn).where(ranked.c.id == service_id))).scalar_one_or_none()
-    if current_rn is None:
-        return None, None, None, None
-    previous_row = (
-        await db.execute(select(ranked.c.patient_id, ranked.c.id).where(ranked.c.rn == current_rn - 1))
-    ).first()
-    next_row = (
-        await db.execute(select(ranked.c.patient_id, ranked.c.id).where(ranked.c.rn == current_rn + 1))
-    ).first()
-    previous_patient_id, previous_service_id = previous_row if previous_row else (None, None)
-    next_patient_id, next_service_id = next_row if next_row else (None, None)
-    return previous_patient_id, previous_service_id, next_patient_id, next_service_id
 
 
 async def list_todays_appointments(
