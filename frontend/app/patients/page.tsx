@@ -10,16 +10,20 @@
  * - "Upcoming Appointments": patients with a scheduled appointment after
  *   today, one row per patient (their next visit) — for planning ahead,
  *   not the immediate day-of schedule.
+ * - "Calendar": a month-at-a-glance density grid, for spotting a heavy day
+ *   before drilling into it, rather than paging through days one at a time.
  * - "All Patients": the full searchable/filterable/sortable roster (what
  *   this page used to be exclusively).
  *
  * These are different enough in shape and purpose (today's schedule vs.
- * future bookings vs. the entire patient base) that combining them into
- * one table with a filter would have made none of them fast to scan.
+ * future bookings vs. a month overview vs. the entire patient base) that
+ * combining them into one table with a filter would have made none of them
+ * fast to scan.
  */
 
 import { useState } from "react";
 
+import { CalendarView } from "@/components/patients/CalendarView";
 import { PatientTable } from "@/components/patients/PatientTable";
 import { TodaysAppointmentsTable } from "@/components/patients/TodaysAppointmentsTable";
 import { UpcomingAppointmentsTable } from "@/components/patients/UpcomingAppointmentsTable";
@@ -27,6 +31,7 @@ import { UpcomingAppointmentsTable } from "@/components/patients/UpcomingAppoint
 const TABS = [
   { key: "today", label: "Today's Appointments" },
   { key: "upcoming", label: "Upcoming Appointments" },
+  { key: "calendar", label: "Calendar" },
   { key: "all", label: "All Patients" },
 ] as const;
 
@@ -60,6 +65,7 @@ export default function PatientsPage() {
 
       {tab === "today" && <TodaysAppointmentsTable />}
       {tab === "upcoming" && <UpcomingAppointmentsTable />}
+      {tab === "calendar" && <CalendarView />}
       {tab === "all" && <PatientTable />}
     </div>
   );

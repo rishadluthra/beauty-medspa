@@ -8,7 +8,7 @@ service as "tools" over the data.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,8 @@ from app.models import Appointment, AppointmentService, Patient, Payment, Provid
 from app.schemas.patient import (
     AppointmentDetail,
     AppointmentServiceItem,
+    CalendarDayCount,
+    CalendarMonthResponse,
     PatientDetail,
     PatientDetailResponse,
     PatientListItem,
@@ -379,28 +381,15 @@ async def _get_upcoming_reference_now(db: AsyncSession) -> datetime:
     return latest_two_months[1]  # index 0 is the latest month; 1 is the one before it
 
 
-async def list_todays_appointments(
-    db: AsyncSession, page: int = 1, page_size: int = 100, provider_id: str | None = None,
+async def _list_schedule_between(
+    db: AsyncSession, start_of_day: datetime, end_of_day: datetime, reference_date: date,
+    page: int, page_size: int, provider_id: str | None,
 ) -> TodaysAppointmentsResponse:
-    """List every scheduled service occurring on the reference "today", for the front desk's
-    at-a-glance daily schedule -- see `_get_upcoming_reference_now` for what "today" means
-    against this seed dataset.
-
-    One row per `AppointmentService` (not per `Appointment`): a multi-service appointment
-    (e.g. consultation, then an X-ray with a different provider) occupies more than one
-    real time slot on the day's schedule, and a front desk agent needs to see each one,
-    not a single row that hides which provider is busy when. Cancelled appointments are
-    excluded entirely -- they aren't happening today regardless of what time they were
-    scheduled for.
-
-    `provider_id`, if given, restricts this to the services that specific provider is
-    performing today -- e.g. "what does Dr. Smith have today" -- rather than the whole
-    clinic's schedule.
+    """Shared query behind `list_todays_appointments` and `list_schedule_for_date`: every
+    scheduled service (one row per `AppointmentService`, not per `Appointment` -- see
+    `list_todays_appointments`) starting within `[start_of_day, end_of_day)`, excluding
+    cancelled appointments, optionally narrowed to one provider.
     """
-    reference_now = await _get_upcoming_reference_now(db)
-    reference_date = reference_now.date()
-    end_of_day = reference_now + timedelta(days=1)
-
     query = (
         select(
             AppointmentService.id, Patient.id, Patient.first_name, Patient.last_name, Patient.phone,
@@ -413,7 +402,7 @@ async def list_todays_appointments(
         .join(Provider, Provider.id == AppointmentService.provider_id)
         .where(
             Appointment.status != "cancelled",
-            AppointmentService.start >= reference_now,
+            AppointmentService.start >= start_of_day,
             AppointmentService.start < end_of_day,
         )
         .order_by(AppointmentService.start.asc())
@@ -437,6 +426,87 @@ async def list_todays_appointments(
     return TodaysAppointmentsResponse(
         items=items, total=total, page=page, page_size=page_size, reference_date=reference_date,
     )
+
+
+async def list_todays_appointments(
+    db: AsyncSession, page: int = 1, page_size: int = 100, provider_id: str | None = None,
+) -> TodaysAppointmentsResponse:
+    """List every scheduled service occurring on the reference "today", for the front desk's
+    at-a-glance daily schedule -- see `_get_upcoming_reference_now` for what "today" means
+    against this seed dataset.
+
+    One row per `AppointmentService` (not per `Appointment`): a multi-service appointment
+    (e.g. consultation, then an X-ray with a different provider) occupies more than one
+    real time slot on the day's schedule, and a front desk agent needs to see each one,
+    not a single row that hides which provider is busy when. Cancelled appointments are
+    excluded entirely -- they aren't happening today regardless of what time they were
+    scheduled for.
+
+    `provider_id`, if given, restricts this to the services that specific provider is
+    performing today -- e.g. "what does Dr. Smith have today" -- rather than the whole
+    clinic's schedule.
+    """
+    reference_now = await _get_upcoming_reference_now(db)
+    reference_date = reference_now.date()
+    end_of_day = reference_now + timedelta(days=1)
+    return await _list_schedule_between(db, reference_now, end_of_day, reference_date, page, page_size, provider_id)
+
+
+async def list_schedule_for_date(
+    db: AsyncSession, target_date: date, page: int = 1, page_size: int = 100, provider_id: str | None = None,
+) -> TodaysAppointmentsResponse:
+    """List every scheduled service on an arbitrary day, for the Calendar view's drill-down
+    (click a day, see that day's schedule) -- the same shape and semantics as
+    `list_todays_appointments`, just for a caller-chosen date instead of always "today".
+    """
+    start_of_day = datetime.combine(target_date, time.min)
+    end_of_day = start_of_day + timedelta(days=1)
+    return await _list_schedule_between(db, start_of_day, end_of_day, target_date, page, page_size, provider_id)
+
+
+async def get_calendar_month(
+    db: AsyncSession, year: int | None = None, month: int | None = None,
+) -> CalendarMonthResponse:
+    """Day-by-day scheduled (non-cancelled) service counts for one calendar month, for the
+    Calendar view's density grid.
+
+    Counts `AppointmentService` rows (not `Appointment`s), consistent with
+    `list_todays_appointments`/`list_schedule_for_date` -- a multi-service appointment
+    contributes one count per service, matching what a front desk agent would actually see
+    if they drilled into that day. Every day of the month is included, even ones with zero
+    scheduled services, so the frontend can render a complete grid without inferring gaps.
+
+    `year`/`month` default to the reference "today"'s own month (see
+    `_get_upcoming_reference_now`) when omitted, so the calendar opens on the month that
+    actually has data against this static seed dataset, not the real current month.
+    """
+    reference_now = await _get_upcoming_reference_now(db)
+    if year is None or month is None:
+        year, month = reference_now.year, reference_now.month
+
+    month_start = date(year, month, 1)
+    next_month_start = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+
+    day_column = func.date(AppointmentService.start)
+    counts_query = (
+        select(day_column.label("day"), func.count(AppointmentService.id).label("count"))
+        .join(Appointment, Appointment.id == AppointmentService.appointment_id)
+        .where(
+            Appointment.status != "cancelled",
+            AppointmentService.start >= month_start,
+            AppointmentService.start < next_month_start,
+        )
+        .group_by(day_column)
+    )
+    counts_by_day = {row.day: row.count for row in (await db.execute(counts_query)).all()}
+
+    days = []
+    current = month_start
+    while current < next_month_start:
+        days.append(CalendarDayCount(date=current, count=counts_by_day.get(current, 0)))
+        current += timedelta(days=1)
+
+    return CalendarMonthResponse(month=f"{year:04d}-{month:02d}", days=days, reference_date=reference_now.date())
 
 
 async def list_upcoming_appointments(

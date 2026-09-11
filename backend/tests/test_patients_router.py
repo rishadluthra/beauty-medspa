@@ -105,3 +105,38 @@ async def test_get_todays_appointments_endpoint_is_reachable(db_session):
     assert "reference_date" in body
 
     app.dependency_overrides.clear()
+
+
+async def test_get_calendar_endpoint_is_reachable_and_accepts_month_param(db_session):
+    """GET /api/patients/calendar must resolve to its own handler (not fall through to
+    /api/patients/{patient_id}), and an explicit ?month=YYYY-MM must be honored rather
+    than ignored in favor of the default reference month.
+    """
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/patients/calendar", params={"month": "2025-06"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["month"] == "2025-06"
+    assert len(body["days"]) == 30  # June has 30 days
+
+    app.dependency_overrides.clear()
+
+
+async def test_get_day_schedule_endpoint_requires_date_param(db_session):
+    """GET /api/patients/day must resolve to its own handler and requires a `date` query param."""
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        missing_date = await client.get("/api/patients/day")
+        with_date = await client.get("/api/patients/day", params={"date": "2026-01-15"})
+
+    assert missing_date.status_code == 422  # date is required, not optional
+    assert with_date.status_code == 200
+    assert with_date.json()["reference_date"] == "2026-01-15"
+
+    app.dependency_overrides.clear()

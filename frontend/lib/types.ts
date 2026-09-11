@@ -206,6 +206,22 @@ export interface UpcomingAppointmentsResponse {
   reference_date: string;
 }
 
+/** One day's scheduled (non-cancelled) service count, for the Calendar view's density grid. */
+export interface CalendarDayCount {
+  date: string;
+  count: number;
+}
+
+/** Response for `GET /api/patients/calendar`: one month's day-by-day appointment density. */
+export interface CalendarMonthResponse {
+  /** "YYYY-MM" */
+  month: string;
+  /** Always covers every day of the month, including zero-count days. */
+  days: CalendarDayCount[];
+  /** The dataset's effective "today" — see the backend for why it isn't always the real current date. */
+  reference_date: string;
+}
+
 /** One provider, as returned by `GET /api/providers`. */
 export interface ProviderListItem {
   id: string;

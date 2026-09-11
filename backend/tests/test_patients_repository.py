@@ -9,8 +9,10 @@ from datetime import date, datetime, timedelta
 
 from app.repositories.patients import (
     PatientFilters,
+    get_calendar_month,
     get_patient_detail,
     list_patients,
+    list_schedule_for_date,
     list_todays_appointments,
     list_upcoming_appointments,
 )
@@ -446,3 +448,87 @@ async def test_list_upcoming_appointments_filters_by_provider_using_that_provide
     by_id = {item.id: item for item in result.items}
     assert by_id["pat_a"].upcoming_appointment_date == datetime(2026, 1, 15, 9, 0)  # Dr Jones's slot, not Dr Smith's earlier one
     assert "pat_b" not in by_id  # has no service with Dr Jones
+
+
+async def test_list_schedule_for_date_returns_the_given_days_schedule_not_the_reference_day(db_session):
+    """`list_schedule_for_date` must respect the caller's own `target_date`, not silently
+    fall back to the dataset's reference "today" -- this is what the Calendar view's
+    day-drill-down depends on to show a day other than today's own schedule.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1"), make_provider(), make_service(),
+        make_appointment(id="apt_target_day", patient_id="pat_1", status="confirmed"),
+        make_appointment(id="apt_other_day", patient_id="pat_1", status="confirmed"),
+        make_appointment(id="apt_later", patient_id="pat_1", status="confirmed"),  # sets the latest data month
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_target_day", start=datetime(2026, 1, 15, 9, 0), end=datetime(2026, 1, 15, 9, 30)),
+        make_appointment_service(appointment_id="apt_other_day", start=datetime(2026, 1, 16, 9, 0), end=datetime(2026, 1, 16, 9, 30)),
+        make_appointment_service(appointment_id="apt_later", start=datetime(2026, 3, 1, 10, 0), end=datetime(2026, 3, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    result = await list_schedule_for_date(db_session, date(2026, 1, 15))
+
+    assert len(result.items) == 1
+    assert result.items[0].start == datetime(2026, 1, 15, 9, 0)
+    assert result.reference_date == date(2026, 1, 15)  # echoes the requested day, not the dataset's reference "today"
+
+
+async def test_get_calendar_month_returns_every_day_with_correct_counts(db_session):
+    """Covers the Calendar view's density grid:
+
+    - Every day of the requested month appears, including zero-count days (Jan 2 below).
+    - Counts are per-`AppointmentService`, so a multi-service day (Jan 1, two services)
+      counts 2, not 1.
+    - A cancelled appointment on Jan 3 doesn't contribute to that day's count.
+    - Days outside the requested month (Feb 1) are excluded entirely.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1"), make_provider(id="prv_1"), make_provider(id="prv_2"),
+        make_service(),
+        make_appointment(id="apt_jan1", patient_id="pat_1", status="confirmed"),
+        make_appointment(id="apt_jan3_cancelled", patient_id="pat_1", status="cancelled"),
+        make_appointment(id="apt_feb1", patient_id="pat_1", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_jan1", provider_id="prv_1", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_jan1", provider_id="prv_2", start=datetime(2026, 1, 1, 10, 0), end=datetime(2026, 1, 1, 10, 30)),
+        make_appointment_service(appointment_id="apt_jan3_cancelled", start=datetime(2026, 1, 3, 9, 0), end=datetime(2026, 1, 3, 9, 30)),
+        make_appointment_service(appointment_id="apt_feb1", start=datetime(2026, 2, 1, 9, 0), end=datetime(2026, 2, 1, 9, 30)),
+    ])
+    await db_session.commit()
+
+    result = await get_calendar_month(db_session, year=2026, month=1)
+
+    assert result.month == "2026-01"
+    assert len(result.days) == 31  # every day of January, regardless of data
+    counts_by_date = {day.date: day.count for day in result.days}
+    assert counts_by_date[date(2026, 1, 1)] == 2  # two services that day
+    assert counts_by_date[date(2026, 1, 2)] == 0  # no data at all -- still present in the grid
+    assert counts_by_date[date(2026, 1, 3)] == 0  # cancelled appointment doesn't count
+    assert date(2026, 2, 1) not in counts_by_date  # outside the requested month
+
+
+async def test_get_calendar_month_defaults_to_the_reference_months(db_session):
+    """Omitting year/month must default to the dataset's reference "today" own month --
+    not the real current calendar month, which would be empty against this frozen dataset.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1"), make_provider(), make_service(),
+        make_appointment(id="apt_1", patient_id="pat_1", status="confirmed"),
+        make_appointment(id="apt_2", patient_id="pat_1", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_1", start=datetime(2025, 12, 10, 9, 0), end=datetime(2025, 12, 10, 9, 30)),
+        make_appointment_service(appointment_id="apt_2", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),  # sets reference month to Dec 2025
+    ])
+    await db_session.commit()
+
+    result = await get_calendar_month(db_session)
+
+    assert result.month == "2025-12"
+    assert result.reference_date == date(2025, 12, 1)

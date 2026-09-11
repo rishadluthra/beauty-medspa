@@ -117,6 +117,29 @@ export function formatTimeRange(start: string, end: string): string {
 }
 
 /**
+ * Parses a "YYYY-MM-DD" date-only string into a `Date` at LOCAL midnight.
+ *
+ * `new Date("2026-01-15")` parses a date-only ISO string as UTC midnight,
+ * which `.getDay()`/`.getDate()` etc. then read back in the *local*
+ * timezone — in any timezone behind UTC, that silently renders as the
+ * previous day. The Calendar view relies on `.getDay()` to line up each
+ * day under the right weekday column, so that off-by-one would visibly
+ * misalign the grid. Constructing the `Date` from its parts directly
+ * (`new Date(year, month, day)`) always means local midnight, sidestepping
+ * the UTC round-trip entirely.
+ */
+export function parseISODate(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/** Formats a "YYYY-MM" month string as e.g. "December 2025". */
+export function formatMonthLabel(month: string): string {
+  const [year, monthNum] = month.split("-").map(Number);
+  return new Date(year, monthNum - 1, 1).toLocaleDateString("en-US", { year: "numeric", month: "long" });
+}
+
+/**
  * Computes a whole-number age in years from an ISO date-of-birth string,
  * accounting for whether this year's birthday has happened yet (not just
  * a naive year subtraction).

@@ -11,6 +11,7 @@
 
 import type {
   AppointmentStatusItem,
+  CalendarMonthResponse,
   DemographicsResponse,
   OverviewStats,
   PatientDetailResponse,
@@ -85,6 +86,11 @@ export const api = {
     apiGet<UpcomingAppointmentsResponse>("/api/patients/upcoming", { ...params }),
   /** Fetches every provider, for populating the schedule views' provider filter. */
   getProviders: () => apiGet<ProviderListResponse>("/api/providers"),
+  /** Fetches one calendar month's day-by-day appointment density, for the Calendar view's grid. Omitting `month` defaults to the dataset's reference month. */
+  getCalendarMonth: (params: { month?: string }) => apiGet<CalendarMonthResponse>("/api/patients/calendar", { ...params }),
+  /** Fetches the full schedule for one specific day, for the Calendar view's day drill-down. */
+  getDaySchedule: (params: { date: string; page?: number; page_size?: number; provider_id?: string }) =>
+    apiGet<TodaysAppointmentsResponse>("/api/patients/day", { ...params }),
   /**
    * Fetches one patient's full profile plus their complete appointment
    * history, for the Patient Detail page. Resolves to `null` (rather than

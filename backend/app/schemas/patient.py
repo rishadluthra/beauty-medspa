@@ -173,3 +173,25 @@ class UpcomingAppointmentsResponse(BaseModel):
     # The effective "today" this view was computed against -- see
     # `list_upcoming_appointments` for why this isn't always the real current date.
     reference_date: date
+
+
+class CalendarDayCount(BaseModel):
+    """One day's scheduled (non-cancelled) service count, for the calendar view's density grid."""
+
+    date: date
+    count: int
+
+
+class CalendarMonthResponse(BaseModel):
+    """A full calendar month's day-by-day appointment density, for the Calendar view.
+
+    `days` always covers every day of the month (including zero-count days), so the
+    frontend can render a complete grid without having to infer which dates are missing.
+    """
+
+    month: str  # "YYYY-MM"
+    days: list[CalendarDayCount]
+    # The effective "today" in this dataset (see `_get_upcoming_reference_now`) -- the
+    # frontend uses this to highlight "today" on the grid, since the real calendar date
+    # means nothing against this frozen seed dataset.
+    reference_date: date

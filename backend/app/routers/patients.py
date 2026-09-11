@@ -15,12 +15,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.repositories.patients import (
     PatientFilters,
+    get_calendar_month,
     get_patient_detail,
     list_patients,
+    list_schedule_for_date,
     list_todays_appointments,
     list_upcoming_appointments,
 )
 from app.schemas.patient import (
+    CalendarMonthResponse,
     PatientDetailResponse,
     PatientListResponse,
     TodaysAppointmentsResponse,
@@ -95,6 +98,37 @@ async def get_upcoming_appointments(
     if given, narrows this to that provider's own upcoming schedule.
     """
     return await list_upcoming_appointments(db, page=page, page_size=page_size, provider_id=provider_id)
+
+
+@router.get("/calendar", response_model=CalendarMonthResponse)
+async def get_calendar(
+    month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$", description="YYYY-MM; defaults to the dataset's reference month"),
+    db: AsyncSession = Depends(get_db),
+) -> CalendarMonthResponse:
+    """Day-by-day appointment density for one calendar month, for the Calendar view's grid.
+
+    See `get_calendar_month` for what "defaults to the reference month" means against this
+    static seed dataset when `month` is omitted.
+    """
+    year_int, month_int = (int(part) for part in month.split("-")) if month else (None, None)
+    return await get_calendar_month(db, year=year_int, month=month_int)
+
+
+@router.get("/day", response_model=TodaysAppointmentsResponse)
+async def get_day_schedule(
+    date: date,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+    provider_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> TodaysAppointmentsResponse:
+    """The full schedule for one specific day, for the Calendar view's day drill-down.
+
+    Same shape as `/today`, for a caller-chosen `date` (YYYY-MM-DD) instead of always the
+    dataset's reference "today". `provider_id`, if given, narrows this to one provider's
+    own schedule for that day.
+    """
+    return await list_schedule_for_date(db, date, page=page, page_size=page_size, provider_id=provider_id)
 
 
 @router.get("/{patient_id}", response_model=PatientDetailResponse)
