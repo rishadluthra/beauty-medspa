@@ -69,6 +69,8 @@ export interface PatientQueryParams {
   age_min?: number;
   /** Maximum age in years, inclusive, as of today. */
   age_max?: number;
+  /** Minimum lifetime spend in cents (paid payments only), inclusive -- for finding high-value patients. */
+  min_total_spent_cents?: number;
   sort?: string;
   page?: number;
   page_size?: number;
@@ -191,6 +193,7 @@ export function patientDetailHref(patientId: string, context?: PatientDetailCont
       set("created_to", context.created_to);
       set("age_min", context.age_min);
       set("age_max", context.age_max);
+      set("min_total_spent_cents", context.min_total_spent_cents);
     }
   }
 

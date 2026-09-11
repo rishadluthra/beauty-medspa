@@ -45,6 +45,7 @@ async def get_patients(
     created_to: date | None = None,
     age_min: int | None = Query(None, ge=0),
     age_max: int | None = Query(None, ge=0),
+    min_total_spent_cents: int | None = Query(None, ge=0),
     sort: str = "name",
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
@@ -55,13 +56,14 @@ async def get_patients(
     Supports free-text search (name/email/phone), exact-match filters
     (source, gender), a created-date range (created_from/created_to, both
     inclusive), an age range (age_min/age_max, both inclusive, computed
-    from date_of_birth as of today), sorting, and pagination — all applied
-    server-side by `list_patients`. `page_size` is capped at 100 to keep
-    responses bounded.
+    from date_of_birth as of today), a minimum-lifetime-spend filter
+    (min_total_spent_cents, for finding high-value patients), sorting, and
+    pagination — all applied server-side by `list_patients`. `page_size`
+    is capped at 100 to keep responses bounded.
     """
     filters = PatientFilters(
         search=search, source=source, gender=gender, created_from=created_from, created_to=created_to,
-        age_min=age_min, age_max=age_max,
+        age_min=age_min, age_max=age_max, min_total_spent_cents=min_total_spent_cents,
     )
     return await list_patients(db, filters, sort=sort, page=page, page_size=page_size)
 
@@ -160,6 +162,7 @@ async def get_patient(
     created_to: date | None = None,
     age_min: int | None = Query(None, ge=0),
     age_max: int | None = Query(None, ge=0),
+    min_total_spent_cents: int | None = Query(None, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> PatientDetailResponse:
     """One patient's full profile plus their complete appointment history, for the Patient Detail page.
@@ -174,17 +177,17 @@ async def get_patient(
     `ctx` ("all" | "rebooking") tells the Previous/Next buttons which source list the
     agent actually navigated from, so they walk that list's own order instead of a fixed
     global one -- see `PatientListContext`. The remaining params are "all"'s own scope:
-    `sort`/`search`/`source`/`gender`/`created_from`/`created_to`/`age_min`/`age_max`,
-    identical in meaning to `GET /api/patients`. Omitting `ctx` (a direct link, a
-    global-search result, or any other entry point with no real list to scope to) falls
-    back to the old fixed global name-sorted order.
+    `sort`/`search`/`source`/`gender`/`created_from`/`created_to`/`age_min`/`age_max`/
+    `min_total_spent_cents`, identical in meaning to `GET /api/patients`. Omitting `ctx`
+    (a direct link, a global-search result, or any other entry point with no real list
+    to scope to) falls back to the old fixed global name-sorted order.
     """
     context = PatientListContext(
         kind=ctx or "all",
         filters=PatientFilters(
             search=search, source=source, gender=gender,
             created_from=created_from, created_to=created_to,
-            age_min=age_min, age_max=age_max,
+            age_min=age_min, age_max=age_max, min_total_spent_cents=min_total_spent_cents,
         ),
         sort=sort,
     )

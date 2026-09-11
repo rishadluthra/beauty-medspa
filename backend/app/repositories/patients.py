@@ -56,8 +56,11 @@ class PatientFilters:
     `created_to` covers the entire day, not just midnight). `age_min`/
     `age_max` filter on age *as of today*, computed from `date_of_birth`
     (see `list_patients` for how an age range converts to a date-of-birth
-    range). All fields are optional; omitted filters are simply not
-    applied.
+    range). `min_total_spent_cents` filters on lifetime spend (the same
+    *paid*-payments-only sum `list_patients` already computes as
+    `total_spent_cents`), for identifying high-value patients -- a patient
+    with no paid payments at all is treated as 0, not excluded outright.
+    All fields are optional; omitted filters are simply not applied.
     """
 
     search: str | None = None
@@ -67,6 +70,7 @@ class PatientFilters:
     created_to: date | None = None
     age_min: int | None = None
     age_max: int | None = None
+    min_total_spent_cents: int | None = None
 
 
 @dataclass
@@ -122,11 +126,15 @@ def _last_appointment_subquery():
     )
 
 
-def _apply_patient_filters(query, filters: PatientFilters):
+def _apply_patient_filters(query, filters: PatientFilters, payment_totals_sq):
     """Applies every `PatientFilters` field to `query` as a WHERE clause, exactly as
     `list_patients` needs -- factored out so `_neighbors_in_all_patients` (Prev/Next)
     filters candidates identically to however the Patient Table itself is currently
     filtered, and the two can never silently drift apart.
+
+    `payment_totals_sq` must already be joined onto `query` (both current callers do
+    this before calling here) -- needed for `min_total_spent_cents`, which filters on
+    that aggregate rather than a plain `Patient` column.
     """
     if filters.search:
         term = filters.search.lower()
@@ -158,6 +166,13 @@ def _apply_patient_filters(query, filters: PatientFilters):
     if filters.age_max is not None:
         cutoff = _years_before(date.today(), filters.age_max + 1)
         query = query.where(Patient.date_of_birth >= cutoff + timedelta(days=1))
+    if filters.min_total_spent_cents is not None:
+        # A patient with no paid payments at all has NULL here (outer join), which must
+        # count as 0 -- otherwise they'd silently pass a "min spent >= 0" filter instead
+        # of being correctly excluded.
+        query = query.where(
+            func.coalesce(payment_totals_sq.c.total_spent_cents, 0) >= filters.min_total_spent_cents
+        )
     return query
 
 
@@ -239,7 +254,7 @@ async def list_patients(
     # search terms that already look like an email address, anchored to the
     # start of the address only (this dataset's random email local-parts
     # otherwise produce false-positive matches against plain name searches).
-    query = _apply_patient_filters(query, filters)
+    query = _apply_patient_filters(query, filters, payment_totals)
 
     # Count matching rows (post-filter) for pagination metadata, without pulling all rows.
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
@@ -287,7 +302,7 @@ async def _neighbors_in_all_patients(
         .outerjoin(payment_totals, payment_totals.c.patient_id == Patient.id)
         .outerjoin(last_appointment, last_appointment.c.patient_id == Patient.id)
     )
-    base = _apply_patient_filters(base, filters)
+    base = _apply_patient_filters(base, filters, payment_totals)
     order_exprs = _patient_sort_expressions(sort, payment_totals, last_appointment)
     ranked = base.add_columns(func.row_number().over(order_by=order_exprs).label("rn")).subquery()
 

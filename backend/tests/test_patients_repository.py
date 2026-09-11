@@ -141,6 +141,38 @@ async def test_list_patients_filters_by_age_range_inclusive_at_both_boundaries(d
     assert {item.id for item in result.items} == {"pat_20", "pat_30"}
 
 
+async def test_list_patients_filters_by_minimum_total_spent_inclusive_and_excludes_unpaid(db_session):
+    """min_total_spent_cents keeps patients whose PAID-only lifetime spend is at or above
+    the threshold (inclusive), for finding high-value patients.
+
+    pat_high has $500 paid (at the threshold -- proves inclusive, not strictly-greater).
+    pat_low has $499.99 paid (just under -- excluded). pat_unpaid has a $10,000 payment
+    that's still "pending" (not paid), so their real paid total is $0 -- excluded despite
+    a large nominal payment on file, same "paid-only" rule list_patients already applies
+    everywhere else. pat_none has no payments at all (NULL from the outer join, must be
+    treated as 0, not silently pass the filter) -- excluded.
+    """
+    db_session.add_all([
+        make_patient(id="pat_high"), make_patient(id="pat_low"),
+        make_patient(id="pat_unpaid"), make_patient(id="pat_none"),
+        make_provider(), make_service(),
+        make_appointment(id="apt_high", patient_id="pat_high"),
+        make_appointment(id="apt_low", patient_id="pat_low"),
+        make_appointment(id="apt_unpaid", patient_id="pat_unpaid"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_payment(id="pay_high", patient_id="pat_high", appointment_id="apt_high", amount=50000, status="paid"),
+        make_payment(id="pay_low", patient_id="pat_low", appointment_id="apt_low", amount=49999, status="paid"),
+        make_payment(id="pay_unpaid", patient_id="pat_unpaid", appointment_id="apt_unpaid", amount=1000000, status="pending"),
+    ])
+    await db_session.commit()
+
+    result = await list_patients(db_session, PatientFilters(min_total_spent_cents=50000))
+
+    assert {item.id for item in result.items} == {"pat_high"}
+
+
 async def test_get_patient_detail_returns_none_for_unknown_id(db_session):
     """A patient id that doesn't exist returns None (the router turns this into a 404), not an error."""
     result = await get_patient_detail(db_session, "pat_does_not_exist")
@@ -331,6 +363,16 @@ async def test_get_patient_detail_all_context_scopes_previous_next_to_active_sor
     global_order = await get_patient_detail(db_session, "pat_a")
     assert global_order.previous_patient_id == "pat_c"
     assert global_order.next_patient_id is None
+
+    # min_total_spent_cents=$150 excludes pat_b ($100, below threshold) and
+    # pat_other_source ($0, no payment at all) from the ranking too, leaving only
+    # pat_a ($300) and pat_c ($200) as each other's direct neighbors.
+    high_spenders = PatientListContext(
+        kind="all", filters=PatientFilters(min_total_spent_cents=15000), sort="total_spent",
+    )
+    top_spender = await get_patient_detail(db_session, "pat_a", context=high_spenders)
+    assert top_spender.previous_patient_id is None
+    assert top_spender.next_patient_id == "pat_c"
 
 
 

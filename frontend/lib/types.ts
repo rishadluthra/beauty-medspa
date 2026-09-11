@@ -178,6 +178,7 @@ export type PatientDetailContext =
       created_to?: string;
       age_min?: number;
       age_max?: number;
+      min_total_spent_cents?: number;
     }
   | { kind: "rebooking" };
 

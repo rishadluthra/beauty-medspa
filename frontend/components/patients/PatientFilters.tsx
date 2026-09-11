@@ -55,6 +55,7 @@ function countActiveFilters(filters: PatientQueryParams): number {
     filters.created_to,
     filters.age_min,
     filters.age_max,
+    filters.min_total_spent_cents,
   ].filter((value) => value !== undefined && value !== "").length;
 }
 
@@ -183,6 +184,29 @@ export function PatientFilters({ filters, onChange }: Props) {
                 onChange={(e) => onChange({ age_max: e.target.value ? Number(e.target.value) : undefined })}
               />
             </div>
+          </div>
+
+          <div>
+            {/*
+              For finding high-value patients -- entered in dollars (matching how
+              money is shown everywhere else in this app) and converted to the cents
+              the API actually expects. `Math.round` guards against float drift from
+              typing something like "19.99".
+            */}
+            <span className="mb-1 block text-xs font-medium text-brand-dark/60">Min. Spent ($)</span>
+            <input
+              type="number"
+              min={0}
+              placeholder="e.g. 500"
+              aria-label="Minimum total spent in dollars"
+              className={`w-full ${fieldClassName}`}
+              value={filters.min_total_spent_cents !== undefined ? filters.min_total_spent_cents / 100 : ""}
+              onChange={(e) =>
+                onChange({
+                  min_total_spent_cents: e.target.value ? Math.round(Number(e.target.value) * 100) : undefined,
+                })
+              }
+            />
           </div>
 
           <div>

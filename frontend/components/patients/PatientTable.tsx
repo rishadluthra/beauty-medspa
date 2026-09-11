@@ -53,7 +53,7 @@ export function PatientTable({ filters, onFiltersChange }: Props) {
   const context: PatientDetailContext = {
     kind: "all", sort: filters.sort, search: filters.search, source: filters.source,
     gender: filters.gender, created_from: filters.created_from, created_to: filters.created_to,
-    age_min: filters.age_min, age_max: filters.age_max,
+    age_min: filters.age_min, age_max: filters.age_max, min_total_spent_cents: filters.min_total_spent_cents,
   };
 
   return (
