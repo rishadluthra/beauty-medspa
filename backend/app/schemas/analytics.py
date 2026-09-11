@@ -18,6 +18,9 @@ class OverviewStats(BaseModel):
     avg_transaction_cents: int
     new_patients_last_30_days: int
     cancellation_rate: float  # cancelled / total appointments, 0.0-1.0
+    # Of patients with at least one non-cancelled appointment, the fraction
+    # with two or more -- i.e. did they come back. 0.0-1.0.
+    repeat_patient_rate: float
 
 
 class RevenuePoint(BaseModel):

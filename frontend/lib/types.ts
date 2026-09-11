@@ -41,6 +41,8 @@ export interface OverviewStats {
   avg_transaction_cents: number;
   new_patients_last_30_days: number;
   cancellation_rate: number;
+  /** Of patients with at least one non-cancelled appointment, the fraction with two or more. 0.0-1.0. */
+  repeat_patient_rate: number;
 }
 
 /** One point on the revenue-over-time chart (e.g. one month's total revenue). */

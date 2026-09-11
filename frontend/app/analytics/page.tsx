@@ -45,6 +45,14 @@ export default function AnalyticsPage() {
       {overview && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
           <KpiCard label="Total Patients" value={overview.total_patients.toLocaleString()} />
+          {/*
+            Retention: of patients who've come in at least once, what
+            share came back for a second (non-cancelled) visit. Placed
+            second, right after the headline patient count, since it's a
+            core "how healthy is this business" answer the spec calls out
+            explicitly -- not a minor stat to bury at the end of the row.
+          */}
+          <KpiCard label="Repeat Patient Rate" value={`${(overview.repeat_patient_rate * 100).toFixed(1)}%`} />
           <KpiCard label="Total Revenue" value={formatCents(overview.total_revenue_cents)} />
           <KpiCard label="Total Appointments" value={overview.total_appointments.toLocaleString()} />
           <KpiCard label="Avg. Transaction" value={formatCents(overview.avg_transaction_cents)} />

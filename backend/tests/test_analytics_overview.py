@@ -36,6 +36,30 @@ async def test_overview_counts_only_paid_revenue_and_computes_cancellation_rate(
     assert stats.cancellation_rate == 0.5
 
 
+async def test_overview_repeat_patient_rate_excludes_cancelled_appointments_and_zero_visit_patients(db_session):
+    """repeat_patient_rate = (patients with >=2 non-cancelled appointments) / (patients with >=1).
+
+    pat_1 has two confirmed appointments (a repeat patient). pat_2 has
+    one. pat_3 has one confirmed + one cancelled -- the cancelled one
+    must NOT count toward "came back", so pat_3 is NOT a repeat patient
+    despite having 2 appointment rows. pat_4 has zero appointments and
+    must be excluded from the denominator entirely (not "0 out of 4").
+    """
+    db_session.add_all([
+        make_patient(id="pat_1"), make_patient(id="pat_2"), make_patient(id="pat_3"), make_patient(id="pat_4"),
+        make_appointment(id="apt_1a", patient_id="pat_1", status="confirmed"),
+        make_appointment(id="apt_1b", patient_id="pat_1", status="confirmed"),
+        make_appointment(id="apt_2a", patient_id="pat_2", status="confirmed"),
+        make_appointment(id="apt_3a", patient_id="pat_3", status="confirmed"),
+        make_appointment(id="apt_3b", patient_id="pat_3", status="cancelled"),
+    ])
+    await db_session.commit()
+
+    stats = await get_overview_stats(db_session)
+
+    assert stats.repeat_patient_rate == round(1 / 3, 4)
+
+
 async def test_revenue_over_time_groups_paid_payments_by_month(db_session):
     """Paid payments are bucketed and summed by calendar month (YYYY-MM), across month boundaries."""
     db_session.add_all([

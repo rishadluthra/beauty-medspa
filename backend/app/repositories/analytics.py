@@ -46,6 +46,15 @@ async def get_overview_stats(db: AsyncSession) -> OverviewStats:
     revenue). All money values are integer cents. `cancellation_rate` is
     cancelled appointments / total appointments, rounded to 4 decimal
     places (0.0 if there are no appointments).
+
+    `repeat_patient_rate` is a retention metric: of patients with at least
+    one *non-cancelled* appointment, what fraction have two or more. A
+    cancelled appointment is excluded from both the numerator and
+    denominator here -- unlike the Patient Table's plain "Appointments"
+    count (which deliberately counts every status, since it's just "how
+    many booking records exist"), a retention metric asking "did this
+    patient come back" shouldn't count a cancelled booking as evidence
+    they did.
     """
     total_patients = (await db.execute(select(func.count(Patient.id)))).scalar_one()
 
@@ -66,6 +75,21 @@ async def get_overview_stats(db: AsyncSession) -> OverviewStats:
     )).scalar_one()
     cancellation_rate = (cancelled_count / total_appointments) if total_appointments else 0.0
 
+    appointment_counts_per_patient = (
+        select(Appointment.patient_id, func.count(Appointment.id).label("count"))
+        .where(Appointment.status != "cancelled")
+        .group_by(Appointment.patient_id)
+        .subquery()
+    )
+    patients_with_appointment = (await db.execute(
+        select(func.count()).select_from(appointment_counts_per_patient)
+    )).scalar_one()
+    repeat_patients = (await db.execute(
+        select(func.count()).select_from(appointment_counts_per_patient)
+        .where(appointment_counts_per_patient.c.count >= 2)
+    )).scalar_one()
+    repeat_patient_rate = (repeat_patients / patients_with_appointment) if patients_with_appointment else 0.0
+
     return OverviewStats(
         total_patients=total_patients,
         total_revenue_cents=int(total_revenue),
@@ -73,6 +97,7 @@ async def get_overview_stats(db: AsyncSession) -> OverviewStats:
         avg_transaction_cents=avg_transaction,
         new_patients_last_30_days=new_patients,
         cancellation_rate=round(cancellation_rate, 4),
+        repeat_patient_rate=round(repeat_patient_rate, 4),
     )
 
 
