@@ -16,20 +16,32 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { calculateAge, formatDate, formatDateTime, formatPhone } from "@/lib/format";
 
+import { ProviderFilterSelect } from "./ProviderFilterSelect";
+
 const PAGE_SIZE = 25;
 
 export function UpcomingAppointmentsTable() {
   const router = useRouter();
   const [page, setPage] = useState(1);
+  const [providerId, setProviderId] = useState<string | undefined>(undefined);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patients", "upcoming", page],
-    queryFn: () => api.getUpcomingAppointments({ page, page_size: PAGE_SIZE }),
+    queryKey: ["patients", "upcoming", page, providerId],
+    queryFn: () => api.getUpcomingAppointments({ page, page_size: PAGE_SIZE, provider_id: providerId }),
   });
 
   return (
     <div className="space-y-4">
-      {data && <p className="text-sm text-brand-bg/70">Scheduled after {formatDate(data.reference_date)}</p>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {data && <p className="text-sm text-brand-bg/70">Scheduled after {formatDate(data.reference_date)}</p>}
+        <ProviderFilterSelect
+          value={providerId}
+          onChange={(nextProviderId) => {
+            setProviderId(nextProviderId);
+            setPage(1);
+          }}
+        />
+      </div>
 
       {isLoading && <p className="text-brand-bg/70">Loading upcoming appointments…</p>}
       {isError && <p className="text-coral">Could not load upcoming appointments. Please try again.</p>}
@@ -62,7 +74,7 @@ export function UpcomingAppointmentsTable() {
                 {data.items.length === 0 && (
                   <tr>
                     <td colSpan={5} className="p-6 text-center text-brand-sage">
-                      No upcoming appointments.
+                      No upcoming appointments{providerId ? " for this provider" : ""}.
                     </td>
                   </tr>
                 )}
@@ -87,7 +99,7 @@ export function UpcomingAppointmentsTable() {
           <div className="space-y-2 sm:hidden">
             {data.items.length === 0 && (
               <p className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-6 text-center text-brand-sage shadow-lg shadow-brand-gold/10">
-                No upcoming appointments.
+                No upcoming appointments{providerId ? " for this provider" : ""}.
               </p>
             )}
             {data.items.map((item) => (

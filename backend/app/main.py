@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import analytics, patients
+from app.routers import analytics, patients, providers
 
 app = FastAPI(title="Beauty Med Spa API")
 
@@ -30,6 +30,7 @@ app.add_middleware(
 # per-endpoint logic (see app/routers and the query layer they call).
 app.include_router(patients.router)
 app.include_router(analytics.router)
+app.include_router(providers.router)
 
 
 @app.get("/api/health")

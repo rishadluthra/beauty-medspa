@@ -205,3 +205,15 @@ export interface UpcomingAppointmentsResponse {
   /** The effective "today" this view was computed against — see the backend for why it isn't always the real current date. */
   reference_date: string;
 }
+
+/** One provider, as returned by `GET /api/providers`. */
+export interface ProviderListItem {
+  id: string;
+  first_name: string;
+  last_name: string;
+}
+
+/** Response for `GET /api/providers`: every provider, sorted by name. */
+export interface ProviderListResponse {
+  items: ProviderListItem[];
+}

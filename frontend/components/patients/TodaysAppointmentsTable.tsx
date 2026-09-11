@@ -24,6 +24,8 @@ import { api } from "@/lib/api";
 import { APPOINTMENT_STATUS_COLORS } from "@/lib/chartColors";
 import { formatDate, formatLabel, formatPhone, formatTimeRange } from "@/lib/format";
 
+import { ProviderFilterSelect } from "./ProviderFilterSelect";
+
 const PAGE_SIZE = 100;
 
 function StatusBadge({ status }: { status: string }) {
@@ -40,17 +42,25 @@ function StatusBadge({ status }: { status: string }) {
 export function TodaysAppointmentsTable() {
   const router = useRouter();
   const [page, setPage] = useState(1);
+  const [providerId, setProviderId] = useState<string | undefined>(undefined);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patients", "today", page],
-    queryFn: () => api.getTodaysAppointments({ page, page_size: PAGE_SIZE }),
+    queryKey: ["patients", "today", page, providerId],
+    queryFn: () => api.getTodaysAppointments({ page, page_size: PAGE_SIZE, provider_id: providerId }),
   });
 
   return (
     <div className="space-y-4">
-      {data && (
-        <p className="text-sm text-brand-bg/70">Schedule for {formatDate(data.reference_date)}</p>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {data && <p className="text-sm text-brand-bg/70">Schedule for {formatDate(data.reference_date)}</p>}
+        <ProviderFilterSelect
+          value={providerId}
+          onChange={(nextProviderId) => {
+            setProviderId(nextProviderId);
+            setPage(1);
+          }}
+        />
+      </div>
 
       {isLoading && <p className="text-brand-bg/70">Loading today&apos;s schedule…</p>}
       {isError && <p className="text-coral">Could not load today&apos;s schedule. Please try again.</p>}
@@ -87,7 +97,7 @@ export function TodaysAppointmentsTable() {
                 {data.items.length === 0 && (
                   <tr>
                     <td colSpan={6} className="p-6 text-center text-brand-sage">
-                      No appointments scheduled today.
+                      No appointments scheduled today{providerId ? " for this provider" : ""}.
                     </td>
                   </tr>
                 )}
@@ -113,7 +123,7 @@ export function TodaysAppointmentsTable() {
           <div className="space-y-2 sm:hidden">
             {data.items.length === 0 && (
               <p className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-6 text-center text-brand-sage shadow-lg shadow-brand-gold/10">
-                No appointments scheduled today.
+                No appointments scheduled today{providerId ? " for this provider" : ""}.
               </p>
             )}
             {data.items.map((item) => (

@@ -68,29 +68,33 @@ async def get_patients(
 async def get_todays_appointments(
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
+    provider_id: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> TodaysAppointmentsResponse:
     """The full schedule for "today" -- the front desk dashboard's default view.
 
     See `list_todays_appointments` for what "today" means against this
     static seed dataset, and why this is one row per scheduled service
-    rather than one row per patient.
+    rather than one row per patient. `provider_id`, if given, narrows this
+    to one provider's own schedule for the day.
     """
-    return await list_todays_appointments(db, page=page, page_size=page_size)
+    return await list_todays_appointments(db, page=page, page_size=page_size, provider_id=provider_id)
 
 
 @router.get("/upcoming", response_model=UpcomingAppointmentsResponse)
 async def get_upcoming_appointments(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
+    provider_id: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> UpcomingAppointmentsResponse:
     """List patients by their soonest appointment after today, for planning ahead.
 
     See `list_upcoming_appointments` for what "today" (and therefore
-    "after today") means against this static seed dataset.
+    "after today") means against this static seed dataset. `provider_id`,
+    if given, narrows this to that provider's own upcoming schedule.
     """
-    return await list_upcoming_appointments(db, page=page, page_size=page_size)
+    return await list_upcoming_appointments(db, page=page, page_size=page_size, provider_id=provider_id)
 
 
 @router.get("/{patient_id}", response_model=PatientDetailResponse)

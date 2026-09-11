@@ -16,6 +16,7 @@ import type {
   PatientDetailResponse,
   PatientListResponse,
   PaymentStatusItem,
+  ProviderListResponse,
   ProviderUtilizationItem,
   RevenuePoint,
   SourceBreakdownItem,
@@ -76,12 +77,14 @@ export interface PatientQueryParams {
 export const api = {
   /** Fetches a page of the patient table, with optional search/filter/sort. */
   getPatients: (params: PatientQueryParams) => apiGet<PatientListResponse>("/api/patients", { ...params }),
-  /** Fetches today's full schedule (the default Patients-page view). */
-  getTodaysAppointments: (params: { page?: number; page_size?: number }) =>
+  /** Fetches today's full schedule (the default Patients-page view). `provider_id` narrows to one provider's own schedule. */
+  getTodaysAppointments: (params: { page?: number; page_size?: number; provider_id?: string }) =>
     apiGet<TodaysAppointmentsResponse>("/api/patients/today", { ...params }),
-  /** Fetches a page of the Upcoming Appointments dashboard (patients scheduled after today). */
-  getUpcomingAppointments: (params: { page?: number; page_size?: number }) =>
+  /** Fetches a page of the Upcoming Appointments dashboard (patients scheduled after today). `provider_id` narrows to one provider's own upcoming schedule. */
+  getUpcomingAppointments: (params: { page?: number; page_size?: number; provider_id?: string }) =>
     apiGet<UpcomingAppointmentsResponse>("/api/patients/upcoming", { ...params }),
+  /** Fetches every provider, for populating the schedule views' provider filter. */
+  getProviders: () => apiGet<ProviderListResponse>("/api/providers"),
   /**
    * Fetches one patient's full profile plus their complete appointment
    * history, for the Patient Detail page. Resolves to `null` (rather than

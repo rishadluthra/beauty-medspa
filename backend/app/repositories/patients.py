@@ -380,7 +380,7 @@ async def _get_upcoming_reference_now(db: AsyncSession) -> datetime:
 
 
 async def list_todays_appointments(
-    db: AsyncSession, page: int = 1, page_size: int = 100,
+    db: AsyncSession, page: int = 1, page_size: int = 100, provider_id: str | None = None,
 ) -> TodaysAppointmentsResponse:
     """List every scheduled service occurring on the reference "today", for the front desk's
     at-a-glance daily schedule -- see `_get_upcoming_reference_now` for what "today" means
@@ -392,6 +392,10 @@ async def list_todays_appointments(
     not a single row that hides which provider is busy when. Cancelled appointments are
     excluded entirely -- they aren't happening today regardless of what time they were
     scheduled for.
+
+    `provider_id`, if given, restricts this to the services that specific provider is
+    performing today -- e.g. "what does Dr. Smith have today" -- rather than the whole
+    clinic's schedule.
     """
     reference_now = await _get_upcoming_reference_now(db)
     reference_date = reference_now.date()
@@ -414,6 +418,8 @@ async def list_todays_appointments(
         )
         .order_by(AppointmentService.start.asc())
     )
+    if provider_id:
+        query = query.where(AppointmentService.provider_id == provider_id)
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
     query = query.offset((page - 1) * page_size).limit(page_size)
@@ -434,7 +440,7 @@ async def list_todays_appointments(
 
 
 async def list_upcoming_appointments(
-    db: AsyncSession, page: int = 1, page_size: int = 25,
+    db: AsyncSession, page: int = 1, page_size: int = 25, provider_id: str | None = None,
 ) -> UpcomingAppointmentsResponse:
     """List patients by their soonest upcoming appointment, for planning ahead beyond today.
 
@@ -443,6 +449,12 @@ async def list_upcoming_appointments(
     sorted soonest-first. Today itself is deliberately excluded here -- it's
     covered by `list_todays_appointments` instead, so the two views don't
     show overlapping appointments.
+
+    `provider_id`, if given, restricts the services considered to that
+    provider's own BEFORE aggregating "soonest" -- so a patient's soonest
+    upcoming appointment *with that provider* is shown, not their soonest
+    appointment overall (which could be a different service with a
+    different provider on the same multi-service appointment).
     """
     # `_get_upcoming_reference_now` returns a `date_trunc('month', ...)`
     # result, which Postgres always normalizes to midnight on day 1 of that
@@ -455,8 +467,11 @@ async def list_upcoming_appointments(
     # Each non-cancelled appointment's earliest service start time (an
     # appointment itself has no date/time of its own -- see
     # AppointmentService), aggregated per appointment so a multi-service
-    # appointment (e.g. consultation + X-ray) collapses to one row.
-    appointment_starts = (
+    # appointment (e.g. consultation + X-ray) collapses to one row. The
+    # provider filter, when given, is applied to AppointmentService BEFORE
+    # this aggregation (not as a HAVING/outer filter after it) so the "soonest"
+    # computed here is that provider's own soonest slot on the appointment.
+    appointment_starts_query = (
         select(
             Appointment.id.label("appointment_id"),
             Appointment.patient_id,
@@ -465,9 +480,12 @@ async def list_upcoming_appointments(
         )
         .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
         .where(Appointment.status != "cancelled")
-        .group_by(Appointment.id, Appointment.patient_id, Appointment.status)
-        .subquery()
     )
+    if provider_id:
+        appointment_starts_query = appointment_starts_query.where(AppointmentService.provider_id == provider_id)
+    appointment_starts = appointment_starts_query.group_by(
+        Appointment.id, Appointment.patient_id, Appointment.status
+    ).subquery()
 
     # Of each patient's upcoming (after today) appointments, keep only the
     # soonest one -- a patient with several upcoming bookings should appear

@@ -399,3 +399,50 @@ async def test_list_todays_appointments_one_row_per_service_excludes_cancelled_a
     assert result.items[0].provider_name == "Dr Smith"
     assert result.items[0].patient_name == "Alice Anderson"
     assert {item.patient_id for item in result.items} == {"pat_a"}  # pat_b (cancelled) and pat_c (tomorrow) excluded
+
+    # provider_id narrows the schedule to just that provider's own services today --
+    # Dr Jones (prv_2) only has the Facial service, not Dr Smith's (prv_1) Consultation.
+    filtered = await list_todays_appointments(db_session, provider_id="prv_2")
+    assert [item.service_name for item in filtered.items] == ["Facial"]
+
+
+async def test_list_upcoming_appointments_filters_by_provider_using_that_providers_own_soonest_slot(db_session):
+    """provider_id filters to that provider's own upcoming services, and "soonest" is
+    computed against just that provider's slots -- not the appointment's overall soonest
+    slot, which could belong to a different provider.
+
+    pat_a's single appointment has two services: an earlier one with Dr Smith (prv_1) and
+    a later one with Dr Jones (prv_2). Filtering for Dr Jones must report the LATER time as
+    pat_a's "soonest with Dr Jones", not the earlier Dr Smith slot. pat_b has no service with
+    Dr Jones at all and must not appear in the Dr Jones-filtered results.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Alice", last_name="Anderson"),
+        make_patient(id="pat_b", first_name="Bob", last_name="Baker"),
+        make_provider(id="prv_1", first_name="Dr", last_name="Smith"),
+        make_provider(id="prv_2", first_name="Dr", last_name="Jones"),
+        make_service(),
+        make_appointment(id="apt_a", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_a_later", patient_id="pat_a", status="confirmed"),  # sets the latest data month
+        make_appointment(id="apt_b", patient_id="pat_b", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(
+            appointment_id="apt_a", provider_id="prv_1",
+            start=datetime(2026, 1, 10, 9, 0), end=datetime(2026, 1, 10, 9, 30),
+        ),
+        make_appointment_service(
+            appointment_id="apt_a", provider_id="prv_2",
+            start=datetime(2026, 1, 15, 9, 0), end=datetime(2026, 1, 15, 9, 30),
+        ),
+        make_appointment_service(appointment_id="apt_a_later", provider_id="prv_1", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+        make_appointment_service(appointment_id="apt_b", provider_id="prv_1", start=datetime(2026, 1, 12, 9, 0), end=datetime(2026, 1, 12, 9, 30)),
+    ])
+    await db_session.commit()
+
+    result = await list_upcoming_appointments(db_session, provider_id="prv_2")
+
+    by_id = {item.id: item for item in result.items}
+    assert by_id["pat_a"].upcoming_appointment_date == datetime(2026, 1, 15, 9, 0)  # Dr Jones's slot, not Dr Smith's earlier one
+    assert "pat_b" not in by_id  # has no service with Dr Jones
