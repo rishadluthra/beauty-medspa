@@ -43,7 +43,12 @@ export default function AnalyticsPage() {
       {isError && <p className="text-coral">Could not load analytics overview.</p>}
 
       {overview && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        // Single column on mobile (not 2) — a 2-up grid on a narrow phone
+        // leaves too little width for a long formatted-currency value
+        // (e.g. a six-figure Total Revenue) to fit without overflowing.
+        // `lg:grid-cols-4` (not 6) gives the same breathing room on
+        // larger screens now that there are 7 KPIs.
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           <KpiCard label="Total Patients" value={overview.total_patients.toLocaleString()} />
           {/*
             Retention: of patients who've come in at least once, what
