@@ -8,6 +8,7 @@
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { BrandMark } from "@/components/BrandMark";
 import { GlobalPatientSearch } from "@/components/GlobalPatientSearch";
@@ -59,6 +60,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="sticky top-3 z-50 flex justify-center px-3 lg:top-4 lg:px-8">
             <nav className="flex w-full max-w-3xl items-center justify-between gap-3 rounded-full border border-brand-gold/10 bg-brand-bg/50 px-4 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl sm:gap-4 sm:px-6 2xl:max-w-5xl">
               {/*
+                Links back to Today's Appointments -- the front desk's
+                actual home base -- like a wordmark conventionally does.
                 The wordmark text itself hides below `sm` (leaving just the
                 logo mark) -- at phone width there isn't room for the full
                 name AND a search control AND both nav links without
@@ -66,10 +69,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 identifies the brand, matching how the search label below
                 already collapses to icon-only at the same breakpoint.
               */}
-              <span className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight">
+              <Link
+                href="/patients?tab=today"
+                className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight transition-opacity hover:opacity-80"
+              >
                 <BrandMark />
                 <span className="hidden sm:inline">Beauty Med Spa</span>
-              </span>
+              </Link>
 
               {/*
                 The flexible middle column only exists at `sm` and up --
