@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * Patients page (`/patients`) — one of the two pages required by the spec.
- * Several views live here, switched by a tab, rather than one combined table:
+ * Front Desk page (route: `/patients` -- see `app/layout.tsx` for why the
+ * nav label and the route path deliberately differ) — one of the two pages
+ * required by the spec. Several views live here, switched by a tab, rather
+ * than one combined table:
  *
  * - "Today's Appointments" (the default): the front desk's actual first
  *   question each day — who's coming in, when, for what, with whom. One
@@ -71,7 +73,7 @@ export default function PatientsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold text-brand-bg">Patients</h1>
+      <h1 className="text-2xl font-semibold text-brand-bg">Front Desk</h1>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">

@@ -54,11 +54,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="flex items-center gap-4">
                 <GlobalPatientSearch />
                 <div className="flex gap-8">
+                  {/*
+                    Labeled "Front Desk", not "Patients" -- this section now
+                    covers today's schedule, the calendar, walk-in capacity,
+                    and rebooking outreach, not just a patient list, and
+                    "Front Desk" names who it's for (matching the
+                    front-desk-agent framing this whole dashboard is built
+                    around) rather than undersellling it as one narrow view.
+                    The route itself stays `/patients` -- that's about
+                    where patient detail pages live (`/patients/{id}`), not
+                    what this section is called in the nav.
+                  */}
                   <Link
                     href="/patients"
                     className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
                   >
-                    Patients
+                    Front Desk
                   </Link>
                   <Link
                     href="/analytics"

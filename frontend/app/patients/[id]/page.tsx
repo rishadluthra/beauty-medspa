@@ -110,7 +110,7 @@ export default function PatientDetailPage() {
           href="/patients"
           className="inline-flex items-center gap-1 text-sm text-brand-bg/70 transition-colors hover:text-brand-gold-dark"
         >
-          ← Back to Patients
+          ← Back to Front Desk
         </Link>
 
         {/*
