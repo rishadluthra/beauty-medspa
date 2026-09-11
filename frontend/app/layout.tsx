@@ -95,7 +95,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 highlights whichever of these actually matches the
                 current route.
               */}
-              <div className="flex shrink-0 items-center gap-3 sm:gap-8">
+              <div className="flex shrink-0 items-center gap-3 sm:gap-4">
                 <div className="w-9 sm:hidden">
                   <GlobalPatientSearch />
                 </div>

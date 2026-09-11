@@ -35,8 +35,12 @@ export function NavLinks() {
             key={link.href}
             href={link.href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-              active ? "bg-brand-gold/20 text-brand-gold-dark" : "text-brand-dark/80 hover:text-brand-gold-dark"
+            // A pill background here read as low-contrast/hard-to-read
+            // (gold-tinted text on a gold-tinted bg) -- just the text
+            // color change is what actually reads clearly, matching the
+            // existing hover treatment on the inactive link.
+            className={`text-sm font-medium transition-colors ${
+              active ? "text-brand-gold-dark" : "text-brand-dark/80 hover:text-brand-gold-dark"
             }`}
           >
             {link.label}
