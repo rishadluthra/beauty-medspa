@@ -31,13 +31,19 @@
  * a glance. The `list_upcoming_appointments` backend query itself is kept
  * (see `ComingUpStrip`) -- only the full-page presentation of it is gone.
  *
- * The tab row and the All Patients filter toolbar are deliberately one row
- * (tabs left-aligned, filters right-aligned via `justify-between`), not two
- * stacked rows -- a separate row just for the filter button used to push
- * every tab's content down an extra row even when that tab had nothing to
- * do with filtering. `filters` is owned here (not inside `PatientTable`)
- * specifically so `PatientFilters` can be rendered in this shared row
- * while `PatientTable` stays a plain controlled consumer of the same state.
+ * The tab row also hosts each active tab's own filter control, right-
+ * aligned against the left-aligned tab selector via `justify-between`, NOT
+ * a separate row below the tabs -- a row that only exists for a filter
+ * used to push every tab's content down an extra row even when that tab
+ * had nothing to do with filtering. Both `patientFilters` (All Patients)
+ * and `todayProviderId` (Today's Appointments) are owned here rather than
+ * inside their respective table components specifically so their filter
+ * controls (`PatientFilters`, `ProviderFilterSelect`) can be rendered in
+ * this one shared row while the table components themselves stay plain
+ * controlled consumers of that same state. `PatientFilters` and
+ * `ProviderFilterSelect` deliberately share one visual style
+ * (`FILTER_PILL_CLASSNAME`) now that they can appear in the same row, so
+ * they read as one consistent control, not two different-looking ones.
  */
 
 import { useState } from "react";
@@ -45,6 +51,7 @@ import { useState } from "react";
 import { CalendarView } from "@/components/patients/CalendarView";
 import { PatientFilters } from "@/components/patients/PatientFilters";
 import { PatientTable } from "@/components/patients/PatientTable";
+import { ProviderFilterSelect } from "@/components/patients/ProviderFilterSelect";
 import { RebookingOpportunitiesTable } from "@/components/patients/RebookingOpportunitiesTable";
 import { TodaysAppointmentsTable } from "@/components/patients/TodaysAppointmentsTable";
 import { WalkInAvailability } from "@/components/patients/WalkInAvailability";
@@ -70,6 +77,7 @@ export default function PatientsPage() {
     page_size: PATIENT_FILTERS_PAGE_SIZE,
     sort: "name",
   });
+  const [todayProviderId, setTodayProviderId] = useState<string | undefined>(undefined);
 
   return (
     <div className="space-y-4">
@@ -94,6 +102,7 @@ export default function PatientsPage() {
           ))}
         </div>
 
+        {tab === "today" && <ProviderFilterSelect value={todayProviderId} onChange={setTodayProviderId} />}
         {tab === "all" && (
           <PatientFilters
             filters={patientFilters}
@@ -102,7 +111,7 @@ export default function PatientsPage() {
         )}
       </div>
 
-      {tab === "today" && <TodaysAppointmentsTable />}
+      {tab === "today" && <TodaysAppointmentsTable providerId={todayProviderId} />}
       {tab === "calendar" && <CalendarView />}
       {tab === "walkin" && <WalkInAvailability />}
       {tab === "all" && (

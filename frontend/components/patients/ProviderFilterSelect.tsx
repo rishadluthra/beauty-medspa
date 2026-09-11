@@ -10,6 +10,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import { FILTER_PILL_CLASSNAME } from "@/lib/pillStyles";
 
 interface Props {
   value: string | undefined;
@@ -25,7 +26,7 @@ export function ProviderFilterSelect({ value, onChange }: Props) {
   return (
     <select
       aria-label="Filter by provider"
-      className="rounded-full border border-brand-bg/20 bg-transparent px-4 py-1.5 text-sm text-brand-bg outline-none transition-colors focus:ring-2 focus:ring-brand-gold/50"
+      className={FILTER_PILL_CLASSNAME}
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value || undefined)}
     >

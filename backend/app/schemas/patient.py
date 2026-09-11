@@ -188,6 +188,11 @@ class RebookingOpportunitiesItem(BaseModel):
     # Their most recent non-cancelled visit -- always in the past, since a patient with
     # anything scheduled today or later doesn't qualify for this list at all.
     last_appointment_date: datetime
+    # The specific service/provider from that same last visit (not just its date) -- the
+    # front desk's rebooking pitch is naturally "you're due for another [service] with
+    # [provider]," so the worklist needs to say what and with whom, not just when.
+    last_service_name: str
+    last_provider_name: str
 
 
 class RebookingOpportunitiesResponse(BaseModel):

@@ -49,13 +49,15 @@ export function RebookingOpportunitiesTable() {
                   <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
                   <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Email</th>
                   <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Last Appointment</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Last Service</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Provider</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-dark/5 text-brand-dark">
-                {/* Empty-state row. colSpan={4} must match the number of <th> columns above. */}
+                {/* Empty-state row. colSpan={6} must match the number of <th> columns above. */}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="p-6 text-center text-brand-sage">
+                    <td colSpan={6} className="p-6 text-center text-brand-sage">
                       No patients currently need rebooking.
                     </td>
                   </tr>
@@ -70,6 +72,8 @@ export function RebookingOpportunitiesTable() {
                     <td className="whitespace-nowrap px-4 py-3.5">{formatPhone(item.phone)}</td>
                     <td className="whitespace-nowrap px-4 py-3.5">{item.email}</td>
                     <td className="whitespace-nowrap px-4 py-3.5">{formatDate(item.last_appointment_date)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{item.last_service_name}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{item.last_provider_name}</td>
                   </tr>
                 ))}
               </tbody>
@@ -92,6 +96,7 @@ export function RebookingOpportunitiesTable() {
                 <p className="font-medium">{item.first_name} {item.last_name}</p>
                 <p className="mt-1 text-sm text-brand-dark/60">{formatPhone(item.phone)} · {item.email}</p>
                 <p className="mt-2 text-sm font-medium">Last seen {formatDate(item.last_appointment_date)}</p>
+                <p className="mt-1 text-sm text-brand-dark/60">{item.last_service_name} with {item.last_provider_name}</p>
               </div>
             ))}
           </div>

@@ -692,3 +692,53 @@ async def test_list_rebooking_opportunities_selects_past_only_patients_sorted_mo
     assert result.reference_date == date(2026, 1, 1)
     assert [item.id for item in result.items] == ["pat_a", "pat_b"]  # most recent visit first
     assert result.items[0].last_appointment_date == datetime(2025, 12, 20, 9, 0)
+    assert result.items[0].last_service_name == "Consultation"  # make_service()'s default name
+    assert result.items[0].last_provider_name == "Dr Smith"  # make_provider()'s default name
+
+
+async def test_list_rebooking_opportunities_last_service_and_provider_come_from_the_latest_row_specifically(db_session):
+    """When a patient's last appointment had multiple services (e.g. a consultation followed
+    by an X-ray, possibly with different providers), last_service_name/last_provider_name
+    must come from whichever single AppointmentService row actually started latest -- not
+    the first one on the appointment, not an arbitrary one.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Alice", last_name="Anderson"),
+        make_patient(id="pat_b", first_name="Bob", last_name="Baker"),
+        make_provider(id="prv_1", first_name="Ann", last_name="Early"),
+        make_provider(id="prv_2", first_name="Bob", last_name="Late"),
+        make_service(id="svc_1", name="Consultation"),
+        make_service(id="svc_2", name="X-Ray"),
+        make_appointment(id="apt_multi", patient_id="pat_a", status="confirmed"),
+        # A different patient's future appointments (in TWO further-out months, Jan and Feb
+        # 2026) set the reference anchor to Jan 2026 -- the second-to-last of three distinct
+        # months (Dec 2025, Jan 2026, Feb 2026) -- so pat_a's Dec 2025 visit lands safely
+        # before it. Anchoring to Dec 2025 itself (with only two distinct months in the
+        # data) would put pat_a's own Dec 20 visit ON-OR-AFTER the reference date, wrongly
+        # flagging them as having an upcoming appointment via the has_upcoming anti-join.
+        # Attaching these to pat_a instead of a separate patient would have the same
+        # problem: it would directly give pat_a an upcoming booking.
+        make_appointment(id="apt_month_jan", patient_id="pat_b", status="confirmed"),
+        make_appointment(id="apt_month_feb", patient_id="pat_b", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(
+            appointment_id="apt_multi", service_id="svc_1", provider_id="prv_1",
+            start=datetime(2025, 12, 20, 9, 0), end=datetime(2025, 12, 20, 9, 30),
+        ),
+        make_appointment_service(
+            appointment_id="apt_multi", service_id="svc_2", provider_id="prv_2",
+            start=datetime(2025, 12, 20, 10, 0), end=datetime(2025, 12, 20, 10, 30),
+        ),
+        make_appointment_service(appointment_id="apt_month_jan", start=datetime(2026, 1, 5, 10, 0), end=datetime(2026, 1, 5, 10, 30)),
+        make_appointment_service(appointment_id="apt_month_feb", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    result = await list_rebooking_opportunities(db_session)
+
+    by_id = {item.id: item for item in result.items}
+    assert by_id["pat_a"].last_appointment_date == datetime(2025, 12, 20, 10, 0)  # the LATER of the two services
+    assert by_id["pat_a"].last_service_name == "X-Ray"  # not "Consultation" (the earlier one)
+    assert by_id["pat_a"].last_provider_name == "Bob Late"  # not "Ann Early"

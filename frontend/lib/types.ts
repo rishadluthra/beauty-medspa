@@ -201,6 +201,9 @@ export interface RebookingOpportunitiesItem {
   phone: string;
   email: string;
   last_appointment_date: string;
+  /** The specific service/provider from that same last visit, for a concrete rebooking pitch. */
+  last_service_name: string;
+  last_provider_name: string;
 }
 
 /** Paginated envelope for the Rebooking Opportunities worklist, sorted most-recently-seen first. */

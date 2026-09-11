@@ -14,23 +14,39 @@
  * correlate with whether an appointment actually needs attention (see
  * ATTENTION_TO_DETAIL.md's note on Appointment.status being uncorrelated
  * with time in this dataset).
+ *
+ * `providerId` is a controlled prop, not local state -- the provider
+ * filter itself is rendered by the parent (`PatientsPage`) in the shared
+ * tab row (alongside the tab selector), the same way the All Patients
+ * tab's Filters button is, rather than in its own row here that used to
+ * push the whole schedule down an extra row.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 
 import { ComingUpStrip } from "./ComingUpStrip";
-import { ProviderFilterSelect } from "./ProviderFilterSelect";
 import { ScheduleTable } from "./ScheduleTable";
 
 const PAGE_SIZE = 100;
 
-export function TodaysAppointmentsTable() {
+interface Props {
+  providerId: string | undefined;
+}
+
+export function TodaysAppointmentsTable({ providerId }: Props) {
   const [page, setPage] = useState(1);
-  const [providerId, setProviderId] = useState<string | undefined>(undefined);
+
+  // `providerId` now comes from the parent (rendered in the shared tab
+  // row) rather than being set locally, so resetting back to page 1 on a
+  // provider change can't happen inline in an onChange handler anymore --
+  // this effect does the equivalent whenever the prop itself changes.
+  useEffect(() => {
+    setPage(1);
+  }, [providerId]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["patients", "today", page, providerId],
@@ -39,16 +55,7 @@ export function TodaysAppointmentsTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        {data && <p className="text-sm text-brand-bg/70">Schedule for {formatDate(data.reference_date)}</p>}
-        <ProviderFilterSelect
-          value={providerId}
-          onChange={(nextProviderId) => {
-            setProviderId(nextProviderId);
-            setPage(1);
-          }}
-        />
-      </div>
+      {data && <p className="text-sm text-brand-bg/70">Schedule for {formatDate(data.reference_date)}</p>}
 
       <ScheduleTable
         data={data}

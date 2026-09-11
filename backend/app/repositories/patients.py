@@ -659,24 +659,44 @@ async def list_rebooking_opportunities(
         .subquery()
     )
 
-    # Each patient's most recent non-cancelled visit. No additional time filter is needed
-    # here beyond the anti-join above: by construction, anyone who reaches this list has no
-    # non-cancelled appointment >= reference_now, so this MAX() is already guaranteed to
-    # land in the past.
-    last_appointment = (
-        select(Appointment.patient_id, func.max(AppointmentService.start).label("last_appointment_date"))
+    # Each patient's single most recent non-cancelled AppointmentService row (by start
+    # time) -- not just an aggregated MAX() timestamp, but the actual service+provider that
+    # happened at that moment, via a row_number() window function (the same "soonest/latest
+    # per patient" pattern used in list_upcoming_appointments). This is what drives
+    # last_service_name/last_provider_name below: the front desk's rebooking pitch is
+    # naturally "you're due for another [service] with [provider]," so the list needs the
+    # specific service+provider from that visit, not just its date. No additional time
+    # filter is needed beyond the has_upcoming anti-join above: by construction, anyone who
+    # reaches this list has no non-cancelled appointment >= reference_now, so the latest row
+    # per patient here is already guaranteed to land in the past.
+    ranked_visits = (
+        select(
+            Appointment.patient_id,
+            AppointmentService.start,
+            Service.name.label("service_name"),
+            Provider.first_name.label("provider_first_name"),
+            Provider.last_name.label("provider_last_name"),
+            func.row_number().over(
+                partition_by=Appointment.patient_id, order_by=AppointmentService.start.desc(),
+            ).label("rn"),
+        )
         .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
+        .join(Service, Service.id == AppointmentService.service_id)
+        .join(Provider, Provider.id == AppointmentService.provider_id)
         .where(Appointment.status != "cancelled")
-        .group_by(Appointment.patient_id)
         .subquery()
     )
+    last_visit = select(ranked_visits).where(ranked_visits.c.rn == 1).subquery()
 
     query = (
-        select(Patient, last_appointment.c.last_appointment_date)
-        .join(last_appointment, last_appointment.c.patient_id == Patient.id)
+        select(
+            Patient, last_visit.c.start, last_visit.c.service_name,
+            last_visit.c.provider_first_name, last_visit.c.provider_last_name,
+        )
+        .join(last_visit, last_visit.c.patient_id == Patient.id)
         .outerjoin(has_upcoming, has_upcoming.c.patient_id == Patient.id)
         .where(has_upcoming.c.patient_id.is_(None))
-        .order_by(last_appointment.c.last_appointment_date.desc())
+        .order_by(last_visit.c.start.desc())
     )
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
@@ -687,8 +707,9 @@ async def list_rebooking_opportunities(
         RebookingOpportunitiesItem(
             id=patient.id, first_name=patient.first_name, last_name=patient.last_name,
             phone=patient.phone, email=patient.email, last_appointment_date=last_appointment_date,
+            last_service_name=service_name, last_provider_name=f"{provider_first_name} {provider_last_name}",
         )
-        for patient, last_appointment_date in rows
+        for patient, last_appointment_date, service_name, provider_first_name, provider_last_name in rows
     ]
 
     return RebookingOpportunitiesResponse(

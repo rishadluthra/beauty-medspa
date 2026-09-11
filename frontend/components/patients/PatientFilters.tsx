@@ -1,15 +1,22 @@
 "use client";
 
 /**
- * Filter/search/sort toolbar for the Patient Table page: a plain anchored
- * "Filters" button, sitting in the page-heading row, that opens a simple
- * dropdown card. The card is anchored to the button's right edge and
- * expands leftward/downward from that corner (`origin-top-right`), the
+ * Filter/search/sort toolbar for the All Patients tab: a plain anchored
+ * "Filters" button, rendered by `PatientsPage` in the shared tab row
+ * (right-aligned, next to the left-aligned tab selector), that opens a
+ * simple dropdown card. The card is anchored to the button's right edge
+ * and expands leftward/downward from that corner (`origin-top-right`), the
  * same way any standard dropdown menu behaves — no scroll-tracking, no
  * shape-morphing, just a clean fade+scale.
  *
+ * The toggle button shares `FILTER_PILL_CLASSNAME` with
+ * `ProviderFilterSelect` (Today's Appointments' "All Providers" control,
+ * which sits in that same tab row when that tab is active) so the two
+ * controls read as one consistent style rather than two different ones
+ * (this used to be a solid opaque button next to a transparent one).
+ *
  * Holds only its own open/closed UI state — the actual filter *values* are
- * owned by `PatientTable` and passed in as `filters`, with every change
+ * owned by `PatientsPage` and passed in as `filters`, with every change
  * reported upward via `onChange`.
  */
 
@@ -17,6 +24,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { PatientQueryParams } from "@/lib/api";
 import { formatLabel } from "@/lib/format";
+import { FILTER_PILL_CLASSNAME } from "@/lib/pillStyles";
 
 // Raw backend enum values for the source/gender filters. These must match
 // the values the API expects (and that live in the seed data / DB), not
@@ -90,7 +98,7 @@ export function PatientFilters({ filters, onChange }: Props) {
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
-        className="flex items-center gap-2 rounded-full border border-brand-gold/10 bg-brand-bg px-4 py-2 text-sm font-medium text-brand-dark shadow-sm transition-colors hover:bg-brand-bg/90"
+        className={FILTER_PILL_CLASSNAME}
       >
         <FilterIcon />
         Filters
