@@ -57,16 +57,7 @@ import { RebookingOpportunitiesTable } from "@/components/patients/RebookingOppo
 import { TodaysAppointmentsTable } from "@/components/patients/TodaysAppointmentsTable";
 import { WalkInAvailability } from "@/components/patients/WalkInAvailability";
 import type { PatientQueryParams } from "@/lib/api";
-
-const TABS = [
-  { key: "today", label: "Today's Appointments" },
-  { key: "calendar", label: "Calendar" },
-  { key: "walkin", label: "Walk-In Availability" },
-  { key: "all", label: "All Patients" },
-  { key: "rebooking", label: "Rebooking Opportunities" },
-] as const;
-
-type TabKey = (typeof TABS)[number]["key"];
+import { TABS, type TabKey } from "@/lib/tabs";
 
 const PATIENT_FILTERS_PAGE_SIZE = 25;
 

@@ -21,6 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AppointmentCard } from "@/components/patients/AppointmentCard";
 import { api } from "@/lib/api";
 import { formatPhone } from "@/lib/format";
+import { tabLabel } from "@/lib/tabs";
 
 const TAB_FOR_CONTEXT: Record<string, string> = { today: "today", day: "calendar" };
 
@@ -55,13 +56,15 @@ export default function AppointmentDetailPage() {
     return `/appointments/${targetAppointmentId}${qs ? `?${qs}` : ""}`;
   };
 
-  // "Back to Front Desk" returns to the Today's Appointments or Calendar tab this
-  // schedule row was actually clicked from -- same mechanism as the Patient Detail
-  // page's own back link, just mapping this page's own `ctx` values (there's no "all"
-  // here; only a schedule row reaches this page at all).
+  // The back link returns to the Today's Appointments or Calendar tab this schedule
+  // row was actually clicked from, labeled with that same tab's own name (`tabLabel`)
+  // -- same mechanism as the Patient Detail page's own back link, just mapping this
+  // page's own `ctx` values (there's no "all" here; only a schedule row reaches this
+  // page at all).
   const contextKind = searchParams.get("ctx");
   const backTab = contextKind ? TAB_FOR_CONTEXT[contextKind] : undefined;
   const backHref = backTab ? `/patients?tab=${backTab}` : "/patients";
+  const backLabel = (backTab && tabLabel(backTab)) || "Front Desk";
 
   return (
     <div className="space-y-6">
@@ -70,7 +73,7 @@ export default function AppointmentDetailPage() {
           href={backHref}
           className="inline-flex items-center gap-1 text-sm text-brand-bg/70 transition-colors hover:text-brand-gold-dark"
         >
-          ← Back to Front Desk
+          ← Back to {backLabel}
         </Link>
 
         {/*

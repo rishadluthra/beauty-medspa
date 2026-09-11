@@ -20,6 +20,7 @@ import { AppointmentCard } from "@/components/patients/AppointmentCard";
 import { SourceBadge } from "@/components/patients/SourceBadge";
 import { api } from "@/lib/api";
 import { calculateAge, formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
+import { tabLabel } from "@/lib/tabs";
 
 /** One icon+text fact in the header's contact-info row (phone, email, address, joined date). */
 function InfoItem({ icon, children }: { icon: ReactNode; children: ReactNode }) {
@@ -74,17 +75,21 @@ export default function PatientDetailPage() {
     queryFn: () => api.getPatientDetail(patientId, Object.fromEntries(searchParams.entries())),
   });
 
-  // "Back to Front Desk" returns to the specific TAB the agent actually navigated in
-  // from, not always the page's own default tab -- `ctx` (see `PatientDetailContext`,
-  // "all" or "rebooking" -- a Today's/Calendar schedule row goes to the Appointment
-  // Detail page instead, not here) already says which list that was, so it maps 1:1
-  // onto the Front Desk page's own tab keys. No `ctx` at all (a direct link, a
-  // global-search result) falls back to the Front Desk page's own default tab, same as
-  // visiting `/patients` with no `?tab=`.
+  // The back link returns to the specific TAB the agent actually navigated in from,
+  // not always the page's own default tab -- `ctx` (see `PatientDetailContext`, "all"
+  // or "rebooking" -- a Today's/Calendar schedule row goes to the Appointment Detail
+  // page instead, not here) already says which list that was, so it maps 1:1 onto the
+  // Front Desk page's own tab keys. Its LABEL comes from that same tab's own entry in
+  // `TABS` (`tabLabel`), so it reads e.g. "Back to Rebooking Opportunities" rather than
+  // always "Back to Front Desk" regardless of where the agent actually came from -- and
+  // can never say something the tab bar itself doesn't also call that tab. No `ctx` at
+  // all (a direct link, a global-search result) falls back to the Front Desk page's own
+  // default tab, same as visiting `/patients` with no `?tab=`.
   const TAB_FOR_CONTEXT: Record<string, string> = { rebooking: "rebooking", all: "all" };
   const contextKind = searchParams.get("ctx");
   const backTab = contextKind ? TAB_FOR_CONTEXT[contextKind] : undefined;
   const backHref = backTab ? `/patients?tab=${backTab}` : "/patients";
+  const backLabel = (backTab && tabLabel(backTab)) || "Front Desk";
 
   const initials = data ? `${data.patient.first_name[0]}${data.patient.last_name[0]}`.toUpperCase() : "";
 
@@ -95,7 +100,7 @@ export default function PatientDetailPage() {
           href={backHref}
           className="inline-flex items-center gap-1 text-sm text-brand-bg/70 transition-colors hover:text-brand-gold-dark"
         >
-          ← Back to Front Desk
+          ← Back to {backLabel}
         </Link>
 
         {/*
