@@ -16,12 +16,12 @@ from app.models import Appointment, AppointmentService, Patient, Payment, Provid
 
 
 def make_patient(id="pat_1", first_name="Jane", last_name="Doe", source="website", gender="female",
-                  created_date=None, date_of_birth=None):
-    """Build a Patient with default demographics; override id/name/source/gender/dates as needed."""
+                  created_date=None, date_of_birth=None, email=None, phone=None):
+    """Build a Patient with default demographics; override id/name/source/gender/dates/email/phone as needed."""
     return Patient(
         id=id, first_name=first_name, last_name=last_name,
         date_of_birth=date_of_birth or datetime(1990, 1, 1), gender=gender,
-        address="123 Main St", phone="555-0100", email=f"{id}@example.com",
+        address="123 Main St", phone=phone or "555-0100", email=email or f"{id}@example.com",
         source=source, created_date=created_date or datetime.utcnow(),
     )
 

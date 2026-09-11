@@ -44,8 +44,10 @@ def _years_before(from_date: date, years: int) -> date:
 class PatientFilters:
     """Optional filters for `list_patients`.
 
-    `search` matches (case-insensitively) against patient name, email, or
-    phone. `source` and `gender` are exact-match filters. `created_from`/
+    `search` matches (case-insensitively) against patient name (anywhere),
+    email (from the start only -- see `list_patients` for why an unanchored
+    email match produced false-positive results in this dataset), or phone
+    (anywhere). `source` and `gender` are exact-match filters. `created_from`/
     `created_to` filter on `Patient.created_date` (inclusive on both ends —
     `created_to` covers the entire day, not just midnight). `age_min`/
     `age_max` filter on age *as of today*, computed from `date_of_birth`
@@ -131,10 +133,29 @@ async def list_patients(
     )
 
     if filters.search:
-        term = f"%{filters.search.lower()}%"
+        term = filters.search.lower()
         query = query.where(
-            func.lower(Patient.first_name + " " + Patient.last_name).like(term)
-            | func.lower(Patient.email).like(term)
+            # Name matching is a genuine "contains anywhere" fuzzy search --
+            # a substring of someone's real name is meaningfully related to
+            # them, so matching it anywhere in "first last" is correct.
+            func.lower(Patient.first_name + " " + Patient.last_name).like(f"%{term}%")
+            # Email is NOT matched the same way. In this seed dataset, email
+            # addresses are generated independently of the patient's actual
+            # identity (verified directly -- e.g. "Angela Abbott" has the
+            # email "andrearogers@example.org") and every address shares the
+            # same handful of domains. An unanchored "%term%" match against
+            # that turns any common word into a firehose: searching
+            # "example" (present in literally every email's domain) matched
+            # all 4,000 patients, and searching a real last name like
+            # "abbott" pulled in unrelated patients (e.g. "Daniel Chambers",
+            # whose randomly generated email happens to be
+            # "qabbott@example.org") right alongside the actual Abbotts --
+            # this was reported as the search "showing incorrect matches".
+            # Anchoring to the START of the email instead matches how an
+            # agent actually types a known email address (from the
+            # beginning), while eliminating coincidental mid-string and
+            # domain-fragment collisions.
+            | func.lower(Patient.email).like(f"{term}%")
             | Patient.phone.like(f"%{filters.search}%")
         )
     if filters.source:

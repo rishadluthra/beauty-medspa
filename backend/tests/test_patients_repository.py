@@ -532,3 +532,93 @@ async def test_get_calendar_month_defaults_to_the_reference_months(db_session):
 
     assert result.month == "2025-12"
     assert result.reference_date == date(2025, 12, 1)
+
+
+async def test_list_patients_search_matches_name_anywhere_case_insensitively(db_session):
+    """Name search is a genuine substring match, case-insensitively, across "first last" --
+    covers matching within the last name, within the first name, and across the space
+    joining them.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1", first_name="Julia", last_name="Acevedo"),
+        make_patient(id="pat_2", first_name="Adam", last_name="Morton"),
+    ])
+    await db_session.commit()
+
+    by_last_name = await list_patients(db_session, PatientFilters(search="ACEVEDO"))
+    assert [item.id for item in by_last_name.items] == ["pat_1"]
+
+    by_first_name = await list_patients(db_session, PatientFilters(search="jul"))
+    assert [item.id for item in by_first_name.items] == ["pat_1"]
+
+    across_the_space = await list_patients(db_session, PatientFilters(search="lia acev"))
+    assert [item.id for item in across_the_space.items] == ["pat_1"]
+
+
+async def test_list_patients_search_does_not_match_an_unrelated_patients_email_midstring(db_session):
+    """Regression test for a real reported bug: searching a patient's actual last name
+    ("Acevedo") also returned a completely unrelated patient ("Adam Morton") purely because
+    his randomly generated seed-data email happened to contain "acevedo" in the middle
+    ("jermaineacevedo@example.org"). Email search must only match from the START of the
+    address (how an agent would actually type a known email), not match a coincidental
+    substring anywhere inside it.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1", first_name="Julia", last_name="Acevedo", email="angela30@example.com"),
+        make_patient(id="pat_2", first_name="Adam", last_name="Morton", email="jermaineacevedo@example.org"),
+    ])
+    await db_session.commit()
+
+    result = await list_patients(db_session, PatientFilters(search="acevedo"))
+
+    assert [item.id for item in result.items] == ["pat_1"]  # NOT pat_2, despite the email substring
+
+
+async def test_list_patients_search_does_not_match_the_shared_email_domain(db_session):
+    """Regression test for the same root cause at its most extreme: every seed patient's
+    email shares a domain fragment ("example.com"/"example.org"/"example.net"), so an
+    unanchored substring match against email would make searching "example" return every
+    patient in the database -- confirmed live against the real dataset (4,000 of 4,000
+    patients) before this fix. Anchoring email matching to the start of the address means
+    a domain-only fragment like this can never match anyone.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1", email="angela30@example.com"),
+        make_patient(id="pat_2", email="jermaine@example.org"),
+    ])
+    await db_session.commit()
+
+    result = await list_patients(db_session, PatientFilters(search="example"))
+
+    assert result.total == 0
+
+
+async def test_list_patients_search_matches_email_from_the_start(db_session):
+    """The anchored email match must still succeed for its intended case: an agent typing
+    the actual beginning of a known email address.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1", email="angela30@example.com"),
+        make_patient(id="pat_2", email="someoneelse@example.com"),
+    ])
+    await db_session.commit()
+
+    result = await list_patients(db_session, PatientFilters(search="ANGELA30"))
+
+    assert [item.id for item in result.items] == ["pat_1"]
+
+
+async def test_list_patients_search_matches_phone_anywhere(db_session):
+    """Phone search stays an unanchored substring match (unlike email) -- a caller is often
+    identified by a recognizable fragment of their number (e.g. the last four digits) rather
+    than always the start of it, so anchoring it the same way email was would break that.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1", phone="(555) 123-4567"),
+        make_patient(id="pat_2", phone="(555) 999-0000"),
+    ])
+    await db_session.commit()
+
+    result = await list_patients(db_session, PatientFilters(search="4567"))
+
+    assert [item.id for item in result.items] == ["pat_1"]
