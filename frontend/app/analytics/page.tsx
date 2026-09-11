@@ -30,8 +30,11 @@
  *  a future AI/NL-query consumer even with no chart currently on top of it.
  */
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { BuildCustomAnalyticsModal } from "@/components/analytics/BuildCustomAnalyticsModal";
+import { CustomReportCard } from "@/components/analytics/CustomReportCard";
 import { DemographicsChart } from "@/components/analytics/DemographicsChart";
 import { KpiCard } from "@/components/analytics/KpiCard";
 import { ProviderUtilizationChart } from "@/components/analytics/ProviderUtilizationChart";
@@ -51,9 +54,34 @@ export default function AnalyticsPage() {
     queryFn: api.getOverview,
   });
 
+  const [isBuildModalOpen, setBuildModalOpen] = useState(false);
+  const { data: customReports } = useQuery({
+    queryKey: ["custom-reports"],
+    queryFn: api.getCustomReports,
+  });
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Analytics</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Analytics</h1>
+        {/*
+          Self-serve pivot builder (metric x dimension x time grain) --
+          lets a manager slice the data their own way (e.g. "revenue by
+          provider by month") instead of being limited to the fixed set
+          of charts below. Saved reports are shared across every viewer
+          (this app has no per-user auth), so any report built here is
+          visible to everyone on their next visit to this page.
+        */}
+        <button
+          type="button"
+          onClick={() => setBuildModalOpen(true)}
+          className="rounded-full bg-brand-gold px-4 py-1.5 text-sm font-medium text-brand-dark transition-colors hover:bg-brand-gold-dark"
+        >
+          + Build Custom Analytics
+        </button>
+      </div>
+
+      {isBuildModalOpen && <BuildCustomAnalyticsModal onClose={() => setBuildModalOpen(false)} />}
 
       {isLoading && <p className="text-brand-bg/70">Loading overview…</p>}
       {isError && <p className="text-coral">Could not load analytics overview.</p>}
@@ -107,6 +135,21 @@ export default function AnalyticsPage() {
         more room to breathe.
       */}
       <TopServicesRevenueChart />
+
+      {/*
+        Custom reports render below the fixed charts, in creation order --
+        newest last, so a freshly-built report appears right where the
+        person who just built it is already looking (the bottom of the
+        page, just below the button that opened the modal), not
+        interleaved among the fixed charts above.
+      */}
+      {customReports && customReports.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {customReports.map((report) => (
+            <CustomReportCard key={report.id} report={report} />
+          ))}
+        </div>
+      )}
 
       <DemographicsChart />
     </div>

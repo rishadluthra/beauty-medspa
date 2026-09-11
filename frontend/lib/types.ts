@@ -353,3 +353,26 @@ export interface ProviderListItem {
 export interface ProviderListResponse {
   items: ProviderListItem[];
 }
+
+/** The fixed option lists the "Build Custom Analytics" modal offers -- must stay in sync with the backend's `Metric`/`Dimension`/`TimeGrain` enums. */
+export type CustomReportMetric = "appointment_count" | "revenue_cents" | "unique_patient_count";
+export type CustomReportDimension = "provider" | "service" | "source";
+export type CustomReportTimeGrain = "month" | "quarter";
+
+/** One (period, dimension value) cell of a custom report's pivot data -- one line/series point on its chart. */
+export interface CustomReportPoint {
+  period: string; // "YYYY-MM" or "YYYY-Q#", depending on time_grain
+  dimension_value: string;
+  value: number; // a count, or integer cents for revenue_cents
+}
+
+/** A saved self-serve custom report, with its pivot data computed inline. See `POST/GET /api/custom-reports`. */
+export interface CustomReport {
+  id: string;
+  title: string;
+  metric: CustomReportMetric;
+  dimension: CustomReportDimension;
+  time_grain: CustomReportTimeGrain;
+  created_date: string;
+  data: CustomReportPoint[];
+}

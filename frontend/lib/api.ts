@@ -14,6 +14,10 @@ import type {
   AppointmentDetailPageResponse,
   AvailabilityResponse,
   CalendarMonthResponse,
+  CustomReport,
+  CustomReportDimension,
+  CustomReportMetric,
+  CustomReportTimeGrain,
   DemographicsResponse,
   OverviewStats,
   PatientDetailContext,
@@ -54,6 +58,34 @@ async function apiGet<T>(path: string, params?: Record<string, string | number |
     throw new Error(`API request failed: ${response.status} ${response.statusText}`);
   }
   return response.json() as Promise<T>;
+}
+
+/**
+ * Issues a POST request with a JSON body to `${API_BASE_URL}${path}` and parses the JSON
+ * response as `T`. Used only by the "Build Custom Analytics" feature -- see `app.main`'s
+ * CORS `allow_methods` for why this is the one write path this otherwise read-only API
+ * exposes. Throws (with the backend's own `detail` message when present, e.g. the saved-
+ * report soft cap) if the response status is not ok.
+ */
+async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? `API request failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+/** Issues a DELETE request to `${API_BASE_URL}${path}`. Throws if the response status is not ok. */
+async function apiDelete(path: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+  }
 }
 
 /** Query/filter/pagination params accepted by `GET /api/patients`. */
@@ -169,6 +201,13 @@ export const api = {
   getProviderUtilization: () => apiGet<ProviderUtilizationItem[]>("/api/analytics/provider-utilization"),
   /** Fetches gender and age-bucket breakdowns, for the demographics chart. */
   getDemographics: () => apiGet<DemographicsResponse>("/api/analytics/demographics"),
+  /** Fetches every saved custom report, each with its pivot data computed inline. */
+  getCustomReports: () => apiGet<CustomReport[]>("/api/custom-reports"),
+  /** Saves a new custom report (metric x dimension x time grain) and returns it with its pivot data computed inline. */
+  createCustomReport: (params: { title: string; metric: CustomReportMetric; dimension: CustomReportDimension; time_grain: CustomReportTimeGrain }) =>
+    apiPost<CustomReport>("/api/custom-reports", params),
+  /** Deletes a saved custom report. */
+  deleteCustomReport: (id: string) => apiDelete(`/api/custom-reports/${encodeURIComponent(id)}`),
 };
 
 /**
