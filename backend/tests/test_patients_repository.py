@@ -373,6 +373,28 @@ async def test_get_patient_detail_today_context_scopes_previous_next_to_todays_s
     assert detail.previous_patient_id == "pat_a"
     assert detail.next_patient_id == "pat_c"
 
+    # previous_service_id/next_service_id must be the NEIGHBORING rows' own ids (pat_a's
+    # and pat_c's actual AppointmentService rows), not middle_service_id echoed back --
+    # the frontend uses these to advance its anchor on the next hop. Regression guard for
+    # a real bug: reusing the *same* service_id across hops re-ranks every subsequent
+    # request against the original row forever, so a second "Next" click resolves back to
+    # the page already on screen and silently does nothing (reported as "Next gets stuck
+    # after one click").
+    a_service_id = next(item.id for item in schedule.items if item.patient_id == "pat_a")
+    c_service_id = next(item.id for item in schedule.items if item.patient_id == "pat_c")
+    assert detail.previous_service_id == a_service_id
+    assert detail.next_service_id == c_service_id
+
+    # Simulating the actual second hop a click-through does: land on pat_c using the
+    # service_id the FIRST response returned (c_service_id), not the original
+    # middle_service_id. This must advance further (no next patient after pat_c), not
+    # loop back to pat_b.
+    detail_c = await get_patient_detail(
+        db_session, "pat_c", context=PatientListContext(kind="today", service_id=detail.next_service_id),
+    )
+    assert detail_c.previous_patient_id == "pat_b"
+    assert detail_c.next_patient_id is None
+
     # Narrowing to Dr Smith's (prv_1) own schedule removes pat_b (Dr Jones's patient) from
     # the ranking entirely, so pat_a's and pat_c's own Dr Smith slots become each other's
     # direct neighbors.

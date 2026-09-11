@@ -151,6 +151,18 @@ export interface PatientDetailResponse {
    */
   previous_patient_id: string | null;
   next_patient_id: string | null;
+  /**
+   * Only set for `ctx=today`/`ctx=day`: the neighboring row's own `AppointmentService`
+   * id, NOT just its patient. Those two contexts rank against a specific schedule row
+   * (a patient can have more than one service the same day), so the row that was
+   * actually clicked has to stay pinned down across hops -- this is what the detail
+   * page uses to update its `service_id` query param when pushing to Previous/Next, so
+   * a second click re-ranks from the new row instead of the stale original one. `null`
+   * for every other context, whose anchor is the patient id itself (already fresh on
+   * every hop since it's the page's own URL param).
+   */
+  previous_service_id: number | null;
+  next_service_id: number | null;
 }
 
 /**

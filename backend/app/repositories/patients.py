@@ -423,14 +423,24 @@ async def get_patient_detail(
     # global-search result (neither of which has a real list to scope to)
     # still gets sane, deterministic neighbors.
     context = context or PatientListContext()
+    # previous_service_id/next_service_id are only ever populated for kind="today"/"day":
+    # those are the only contexts whose ranking anchor is a specific schedule ROW rather
+    # than the patient id itself (a patient can have more than one service the same day),
+    # so the frontend needs the actual neighboring row's id to advance the anchor on the
+    # NEXT hop -- see `_neighbors_in_schedule` for why reusing the same stale service_id
+    # across hops made Next/Prev get stuck after one click. "all"/"rebooking" anchor on
+    # `patient_id` alone, which is already fresh on every hop (it's the page's own path
+    # param), so those simply leave both fields `None`.
+    previous_service_id: int | None = None
+    next_service_id: int | None = None
     if context.kind == "today":
         reference_now = await get_reference_now(db)
-        previous_patient_id, next_patient_id = await _neighbors_in_schedule(
+        previous_patient_id, previous_service_id, next_patient_id, next_service_id = await _neighbors_in_schedule(
             db, context.service_id, reference_now, reference_now + timedelta(days=1), context.provider_id,
         )
     elif context.kind == "day" and context.target_date is not None:
         start_of_day = datetime.combine(context.target_date, time.min)
-        previous_patient_id, next_patient_id = await _neighbors_in_schedule(
+        previous_patient_id, previous_service_id, next_patient_id, next_service_id = await _neighbors_in_schedule(
             db, context.service_id, start_of_day, start_of_day + timedelta(days=1), context.provider_id,
         )
     elif context.kind == "rebooking":
@@ -451,6 +461,8 @@ async def get_patient_detail(
         appointments=appointment_items,
         previous_patient_id=previous_patient_id,
         next_patient_id=next_patient_id,
+        previous_service_id=previous_service_id,
+        next_service_id=next_service_id,
     )
 
 
@@ -543,17 +555,27 @@ async def _list_schedule_between(
 
 async def _neighbors_in_schedule(
     db: AsyncSession, service_id: int | None, start_of_day: datetime, end_of_day: datetime, provider_id: str | None,
-) -> tuple[str | None, str | None]:
-    """Previous/Next `Patient.id` for `get_patient_detail`'s `kind="today"`/`"day"`
-    contexts: the patient belonging to the schedule row immediately before/after the
-    specific `AppointmentService` row `service_id` in the same `[start_of_day, end_of_day)`
-    window `_list_schedule_between` displays (same filters, same
-    `(start, id)` order).
+) -> tuple[str | None, int | None, str | None, int | None]:
+    """Previous/Next for `get_patient_detail`'s `kind="today"`/`"day"` contexts: the
+    patient AND the specific `AppointmentService` row belonging to the schedule slot
+    immediately before/after `service_id`, in the same `[start_of_day, end_of_day)` window
+    `_list_schedule_between` displays (same filters, same `(start, id)` order).
+
+    Returns `(previous_patient_id, previous_service_id, next_patient_id, next_service_id)`.
+    The *_service_id values matter just as much as the *_patient_id ones: the frontend
+    needs the actual neighboring row's id to use as the anchor for the NEXT hop (e.g.
+    clicking Next again from there) -- if it kept reusing the original `service_id` it
+    started from instead, every subsequent hop would be re-ranked against that same stale
+    row forever, which is exactly what produced the "Next gets stuck after one click" bug
+    this function's contract exists to prevent: with a stale anchor, the *second* click's
+    "current position" is still the *first* row, so "next" resolves back to the patient
+    already on screen -- clicking Next again then pushes to a URL that's already loaded,
+    which does nothing.
 
     `service_id` -- not just the current patient's id -- identifies the exact row that was
     clicked, because a patient can have more than one service scheduled the same day; using
     only the patient id would leave "which of their rows are we walking from" ambiguous.
-    Returns `(None, None)` if `service_id` doesn't resolve to a row in this window (e.g. no
+    Returns all `None`s if `service_id` doesn't resolve to a row in this window (e.g. no
     `service_id` was given at all, such as a stale/malformed link) -- disabling the
     buttons rather than guessing.
     """
@@ -574,14 +596,16 @@ async def _neighbors_in_schedule(
 
     current_rn = (await db.execute(select(ranked.c.rn).where(ranked.c.id == service_id))).scalar_one_or_none()
     if current_rn is None:
-        return None, None
-    previous_patient_id = (
-        await db.execute(select(ranked.c.patient_id).where(ranked.c.rn == current_rn - 1))
-    ).scalar_one_or_none()
-    next_patient_id = (
-        await db.execute(select(ranked.c.patient_id).where(ranked.c.rn == current_rn + 1))
-    ).scalar_one_or_none()
-    return previous_patient_id, next_patient_id
+        return None, None, None, None
+    previous_row = (
+        await db.execute(select(ranked.c.patient_id, ranked.c.id).where(ranked.c.rn == current_rn - 1))
+    ).first()
+    next_row = (
+        await db.execute(select(ranked.c.patient_id, ranked.c.id).where(ranked.c.rn == current_rn + 1))
+    ).first()
+    previous_patient_id, previous_service_id = previous_row if previous_row else (None, None)
+    next_patient_id, next_service_id = next_row if next_row else (None, None)
+    return previous_patient_id, previous_service_id, next_patient_id, next_service_id
 
 
 async def list_todays_appointments(

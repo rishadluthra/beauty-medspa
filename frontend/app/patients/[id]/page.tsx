@@ -109,6 +109,27 @@ export default function PatientDetailPage() {
     queryFn: () => api.getPatientDetail(patientId, Object.fromEntries(searchParams.entries())),
   });
 
+  /**
+   * Builds a Previous/Next destination: the same query string this page was loaded
+   * with, EXCEPT `service_id` is swapped for `serviceId` when the response supplied one
+   * (only `ctx=today`/`ctx=day` ever do -- see `previous_service_id`/`next_service_id`
+   * on `PatientDetailResponse`). Those two contexts rank against the specific schedule
+   * row that was clicked, not just a patient id; blindly re-appending the OLD
+   * `service_id` on every hop pins every future request to that first row forever, so a
+   * second "Next" click re-ranks from the same stale position and resolves right back to
+   * the patient already on screen -- pushing to a URL that's already loaded, which does
+   * nothing (reported as "Next gets stuck after one click"). `serviceId` is `null` for
+   * "all"/"rebooking" contexts (whose anchor is the patient id itself, already fresh on
+   * every hop), so this is a no-op for them -- there's no `service_id` param to begin
+   * with, and none gets added.
+   */
+  const hrefFor = (targetPatientId: string, serviceId: number | null): string => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (serviceId !== null) nextParams.set("service_id", String(serviceId));
+    const qs = nextParams.toString();
+    return `/patients/${targetPatientId}${qs ? `?${qs}` : ""}`;
+  };
+
   const initials = data ? `${data.patient.first_name[0]}${data.patient.last_name[0]}`.toUpperCase() : "";
 
   return (
@@ -129,10 +150,12 @@ export default function PatientDetailPage() {
           (last_name, first_name) order when there's no list context at
           all (a direct link, a global-search result). Computed
           server-side in the same request as the rest of this page's data
-          (no extra round-trip). The SAME query string is re-appended to
-          the pushed URL below, so clicking through several patients in a
-          row keeps walking that same list instead of reverting to the
-          global default after one hop. Disabled rather than hidden at
+          (no extra round-trip). `hrefFor` re-appends this same query
+          string to the pushed URL, swapping in the response's own
+          previous/next_service_id when there is one (see `hrefFor`'s own
+          comment for why that swap matters), so clicking through several
+          patients in a row keeps walking that same list instead of
+          getting stuck after one hop. Disabled rather than hidden at
           either end of that ordering, so the control stays in a
           predictable place instead of the layout shifting.
         */}
@@ -143,7 +166,7 @@ export default function PatientDetailPage() {
               disabled={!data.previous_patient_id}
               onClick={() =>
                 data.previous_patient_id &&
-                router.push(`/patients/${data.previous_patient_id}${contextQuery ? `?${contextQuery}` : ""}`)
+                router.push(hrefFor(data.previous_patient_id, data.previous_service_id))
               }
               className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
             >
@@ -154,7 +177,7 @@ export default function PatientDetailPage() {
               disabled={!data.next_patient_id}
               onClick={() =>
                 data.next_patient_id &&
-                router.push(`/patients/${data.next_patient_id}${contextQuery ? `?${contextQuery}` : ""}`)
+                router.push(hrefFor(data.next_patient_id, data.next_service_id))
               }
               className="rounded-full border border-brand-bg/20 px-4 py-1.5 text-brand-bg transition-colors hover:border-brand-gold hover:bg-brand-bg/10 hover:text-brand-gold disabled:opacity-40 disabled:hover:border-brand-bg/20 disabled:hover:bg-transparent disabled:hover:text-brand-bg"
             >

@@ -108,13 +108,22 @@ class PatientDetail(BaseModel):
 
 class PatientDetailResponse(BaseModel):
     """Everything the Patient Detail page needs: the profile, full appointment history, and the
-    adjacent patients (in the default name-sorted order) for its Previous/Next navigation buttons.
+    adjacent patients (scoped to whichever source list the agent navigated from -- see
+    `PatientListContext`) for its Previous/Next navigation buttons.
     """
 
     patient: PatientDetail
     appointments: list[AppointmentDetail]
     previous_patient_id: str | None
     next_patient_id: str | None
+    # Populated only for kind="today"/"day" contexts, whose ranking anchor is a specific
+    # schedule row rather than a patient id (a patient can have more than one service the
+    # same day). The frontend needs the actual neighboring row's id, not just its patient,
+    # to advance the anchor on the NEXT hop -- otherwise Prev/Next re-ranks against the
+    # same stale row forever and gets stuck after one click. `None` for every other
+    # context, whose anchor is the patient id itself (always fresh on each hop already).
+    previous_service_id: int | None = None
+    next_service_id: int | None = None
 
 
 class TodaysAppointmentItem(BaseModel):
