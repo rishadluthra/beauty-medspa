@@ -23,10 +23,9 @@ import { api } from "@/lib/api";
 import { BRAND } from "@/lib/chartColors";
 import { formatCents } from "@/lib/format";
 
-/** "2026-01-01T10:00:00" -> "2026-01-01T10:00", the shape <input type="datetime-local"> needs. */
-function toDatetimeLocalValue(iso: string): string {
-  return iso.slice(0, 16);
-}
+/** Shared styling for the date/time inputs -- matches the service <select> beside them. */
+const fieldClassName =
+  "rounded-lg border border-brand-dark/10 bg-brand-dark/5 px-3 py-2 text-sm text-brand-dark outline-none transition-colors focus:ring-2 focus:ring-brand-gold/50";
 
 function AvailabilityBadge({ available }: { available: boolean }) {
   return (
@@ -106,16 +105,38 @@ export function WalkInAvailability() {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-sm">
+          <div className="flex flex-col gap-1 text-sm">
             <span className="text-xs font-medium text-brand-dark/60">Check availability at</span>
-            <input
-              type="datetime-local"
-              className="rounded-lg border border-brand-dark/10 bg-brand-dark/5 px-3 py-2 text-sm text-brand-dark outline-none transition-colors focus:ring-2 focus:ring-brand-gold/50"
-              value={at ? toDatetimeLocalValue(at) : ""}
-              onChange={(e) => setAt(e.target.value ? `${e.target.value}:00` : undefined)}
-              disabled={at === undefined}
-            />
-          </label>
+            {/*
+              Separate native `date`/`time` inputs instead of one combined
+              `datetime-local` field. A picker's actual look is entirely up
+              to the browser engine, not this code -- Safari already renders
+              `datetime-local` close to the native macOS/iOS calendar and
+              wheel pickers, but Chrome renders it as a cramped little
+              stepper. Splitting into two plain inputs gets Chrome's own
+              (much cleaner) native calendar popup for the date half too.
+            */}
+            <div className="flex gap-2">
+              <label className="sr-only" htmlFor="walkin-date">Date</label>
+              <input
+                id="walkin-date"
+                type="date"
+                className={fieldClassName}
+                value={at ? at.slice(0, 10) : ""}
+                onChange={(e) => e.target.value && at && setAt(`${e.target.value}T${at.slice(11, 16)}:00`)}
+                disabled={at === undefined}
+              />
+              <label className="sr-only" htmlFor="walkin-time">Time</label>
+              <input
+                id="walkin-time"
+                type="time"
+                className={fieldClassName}
+                value={at ? at.slice(11, 16) : ""}
+                onChange={(e) => e.target.value && at && setAt(`${at.slice(0, 10)}T${e.target.value}:00`)}
+                disabled={at === undefined}
+              />
+            </div>
+          </div>
         </div>
 
         {servicesError && <p className="mt-3 text-rust">Could not load services. Please try again.</p>}
