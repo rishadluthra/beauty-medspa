@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Needs Rebooking — the front desk's outreach worklist: patients who have
+ * Rebooking Opportunities — the front desk's outreach worklist: patients who have
  * been seen before but have nothing scheduled going forward. Unlike every
  * other view on this page (all about *existing* appointments), this is
  * actionable in the opposite direction -- these are the people worth
  * calling to get back on the books. Sorted most-recently-seen first (see
- * the backend's `list_needs_rebooking` for why), so the most promising
+ * the backend's `list_rebooking_opportunities` for why), so the most promising
  * calls are at the top rather than buried under years-stale leads.
  */
 
@@ -19,13 +19,13 @@ import { formatDate, formatPhone } from "@/lib/format";
 
 const PAGE_SIZE = 25;
 
-export function NeedsRebookingTable() {
+export function RebookingOpportunitiesTable() {
   const router = useRouter();
   const [page, setPage] = useState(1);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patients", "needs-rebooking", page],
-    queryFn: () => api.getNeedsRebooking({ page, page_size: PAGE_SIZE }),
+    queryKey: ["patients", "rebooking-opportunities", page],
+    queryFn: () => api.getRebookingOpportunities({ page, page_size: PAGE_SIZE }),
   });
 
   return (

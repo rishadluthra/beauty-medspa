@@ -11,7 +11,7 @@ from app.repositories.patients import (
     PatientFilters,
     get_calendar_month,
     get_patient_detail,
-    list_needs_rebooking,
+    list_rebooking_opportunities,
     list_patients,
     list_schedule_for_date,
     list_todays_appointments,
@@ -560,9 +560,8 @@ async def test_list_patients_search_does_not_match_an_unrelated_patients_email_m
     """Regression test for a real reported bug: searching a patient's actual last name
     ("Acevedo") also returned a completely unrelated patient ("Adam Morton") purely because
     his randomly generated seed-data email happened to contain "acevedo" in the middle
-    ("jermaineacevedo@example.org"). Email search must only match from the START of the
-    address (how an agent would actually type a known email), not match a coincidental
-    substring anywhere inside it.
+    ("jermaineacevedo@example.org"). Covered twice over now: "acevedo" contains no "@", so
+    email isn't searched at all, and even if it were, it wouldn't match from the start.
     """
     db_session.add_all([
         make_patient(id="pat_1", first_name="Julia", last_name="Acevedo", email="angela30@example.com"),
@@ -594,9 +593,10 @@ async def test_list_patients_search_does_not_match_the_shared_email_domain(db_se
     assert result.total == 0
 
 
-async def test_list_patients_search_matches_email_from_the_start(db_session):
-    """The anchored email match must still succeed for its intended case: an agent typing
-    the actual beginning of a known email address.
+async def test_list_patients_search_matches_email_from_the_start_only_when_term_contains_at(db_session):
+    """Email matching only activates when the search term contains "@" -- an agent
+    typing/pasting an actual email address -- and even then, only from the start of the
+    address (not searching by "ANGELA30" alone, which contains no "@").
     """
     db_session.add_all([
         make_patient(id="pat_1", email="angela30@example.com"),
@@ -604,9 +604,30 @@ async def test_list_patients_search_matches_email_from_the_start(db_session):
     ])
     await db_session.commit()
 
-    result = await list_patients(db_session, PatientFilters(search="ANGELA30"))
+    result = await list_patients(db_session, PatientFilters(search="ANGELA30@EXAMPLE"))
 
     assert [item.id for item in result.items] == ["pat_1"]
+
+
+async def test_list_patients_search_does_not_match_email_for_a_plain_name_shaped_term(db_session):
+    """Regression test for a real reported bug that survived the earlier anchoring fix:
+    searching "alicia" (a plain name, no "@") still returned "Elizabeth Blackburn" and
+    "Karen Garcia" -- completely unrelated patients -- because their real, randomly
+    generated emails legitimately START WITH "alicia" ("alicia50@example.net",
+    "alicia00@example.com"). Anchoring alone cannot distinguish a coincidental
+    anchored match from a real one, so a plain name-shaped term must not search email at
+    all -- only a term that already contains "@" does.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1", first_name="Alicia", last_name="Abbott", email="iwilkins@example.org"),
+        make_patient(id="pat_2", first_name="Elizabeth", last_name="Blackburn", email="alicia50@example.net"),
+        make_patient(id="pat_3", first_name="Karen", last_name="Garcia", email="alicia00@example.com"),
+    ])
+    await db_session.commit()
+
+    result = await list_patients(db_session, PatientFilters(search="alicia"))
+
+    assert [item.id for item in result.items] == ["pat_1"]  # only the real Alicia
 
 
 async def test_list_patients_search_matches_phone_anywhere(db_session):
@@ -625,8 +646,8 @@ async def test_list_patients_search_matches_phone_anywhere(db_session):
     assert [item.id for item in result.items] == ["pat_1"]
 
 
-async def test_list_needs_rebooking_selects_past_only_patients_sorted_most_recent_first(db_session):
-    """Covers the Needs Rebooking contract in one seeded scenario, anchored to
+async def test_list_rebooking_opportunities_selects_past_only_patients_sorted_most_recent_first(db_session):
+    """Covers the Rebooking Opportunities contract in one seeded scenario, anchored to
     reference_date = 2026-01-01 (set by the Feb 2026 appointment below):
 
     - pat_a and pat_b both have only past (non-cancelled) appointments and nothing
@@ -666,7 +687,7 @@ async def test_list_needs_rebooking_selects_past_only_patients_sorted_most_recen
     ])
     await db_session.commit()
 
-    result = await list_needs_rebooking(db_session)
+    result = await list_rebooking_opportunities(db_session)
 
     assert result.reference_date == date(2026, 1, 1)
     assert [item.id for item in result.items] == ["pat_a", "pat_b"]  # most recent visit first

@@ -17,17 +17,17 @@ from app.repositories.patients import (
     PatientFilters,
     get_calendar_month,
     get_patient_detail,
-    list_needs_rebooking,
     list_patients,
+    list_rebooking_opportunities,
     list_schedule_for_date,
     list_todays_appointments,
     list_upcoming_appointments,
 )
 from app.schemas.patient import (
     CalendarMonthResponse,
-    NeedsRebookingResponse,
     PatientDetailResponse,
     PatientListResponse,
+    RebookingOpportunitiesResponse,
     TodaysAppointmentsResponse,
     UpcomingAppointmentsResponse,
 )
@@ -102,18 +102,18 @@ async def get_upcoming_appointments(
     return await list_upcoming_appointments(db, page=page, page_size=page_size, provider_id=provider_id)
 
 
-@router.get("/needs-rebooking", response_model=NeedsRebookingResponse)
-async def get_needs_rebooking(
+@router.get("/rebooking-opportunities", response_model=RebookingOpportunitiesResponse)
+async def get_rebooking_opportunities(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-) -> NeedsRebookingResponse:
+) -> RebookingOpportunitiesResponse:
     """Patients who have been seen before but have nothing scheduled going forward -- the
     front desk's rebooking/outreach worklist.
 
-    See `list_needs_rebooking` for the exact qualifying criteria and sort order.
+    See `list_rebooking_opportunities` for the exact qualifying criteria and sort order.
     """
-    return await list_needs_rebooking(db, page=page, page_size=page_size)
+    return await list_rebooking_opportunities(db, page=page, page_size=page_size)
 
 
 @router.get("/calendar", response_model=CalendarMonthResponse)

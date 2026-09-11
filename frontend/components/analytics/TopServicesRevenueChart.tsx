@@ -43,9 +43,15 @@ export function TopServicesRevenueChart() {
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
-      <h2 className="mb-4 font-medium text-brand-dark">Top Services by Revenue</h2>
+      <h2 className="mb-4 text-center font-medium text-brand-dark">Top Services by Revenue</h2>
       <ResponsiveContainer width="100%" height={320}>
-        <BarChart data={chartData} layout="vertical" margin={{ left: 80 }}>
+        {/*
+          No extra `margin.left` here -- `YAxis width={140}` already
+          reserves the space its own category labels need, and stacking a
+          separate left margin on top of that double-counted the gutter,
+          pushing the bars themselves too far right.
+        */}
+        <BarChart data={chartData} layout="vertical" margin={{ top: 8, right: 16, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" />
           {/*
             `(v) => ... (v as number)` instead of a typed `(v: number) =>
@@ -55,8 +61,8 @@ export function TopServicesRevenueChart() {
             compile. The cast inside the body is the correct fix — safe
             here since this chart's data is always numeric.
           */}
-          <XAxis type="number" tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
-          <YAxis type="category" dataKey="service_name" width={140} />
+          <XAxis type="number" tickMargin={8} tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
+          <YAxis type="category" dataKey="service_name" width={140} tickMargin={8} />
           <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
           <Bar dataKey="revenue" name="Revenue" fill={BRAND.navyTeal} />
         </BarChart>

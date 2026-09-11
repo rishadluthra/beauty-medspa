@@ -107,15 +107,15 @@ async def test_get_todays_appointments_endpoint_is_reachable(db_session):
     app.dependency_overrides.clear()
 
 
-async def test_get_needs_rebooking_endpoint_is_reachable(db_session):
-    """GET /api/patients/needs-rebooking must resolve to its own handler, not fall through
-    to /api/patients/{patient_id} with patient_id="needs-rebooking".
+async def test_get_rebooking_opportunities_endpoint_is_reachable(db_session):
+    """GET /api/patients/rebooking-opportunities must resolve to its own handler, not fall through
+    to /api/patients/{patient_id} with patient_id="rebooking-opportunities".
     """
     app.dependency_overrides[get_db] = lambda: db_session
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/patients/needs-rebooking")
+        response = await client.get("/api/patients/rebooking-opportunities")
 
     assert response.status_code == 200
     body = response.json()

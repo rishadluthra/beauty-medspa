@@ -19,7 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 
-const PREVIEW_COUNT = 5;
+const PREVIEW_COUNT = 8;
 
 export function ComingUpStrip() {
   const { data, isLoading, isError } = useQuery({

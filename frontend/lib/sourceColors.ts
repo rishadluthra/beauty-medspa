@@ -44,3 +44,27 @@ const FALLBACK_STYLE: CSSProperties = { backgroundColor: "#64748b" };
 export function getSourceBadgeStyle(source: string): CSSProperties {
   return SOURCE_BADGE_STYLE[source] ?? FALLBACK_STYLE;
 }
+
+/**
+ * Flat, single-color version of each source's brand color, for chart fills
+ * (e.g. the "How Patients Find Us" pie chart) -- a chart segment needs one
+ * solid SVG-fillable color, unlike the badge above, which can render
+ * Instagram's actual multi-stop CSS gradient in a small pill. Same
+ * underlying brand colors as `SOURCE_BADGE_STYLE`; Instagram's gradient is
+ * flattened to its classic single-color logo pink/purple (#C13584) instead.
+ */
+const SOURCE_CHART_COLOR: Record<string, string> = {
+  phone: "#34C759",
+  instagram: "#C13584",
+  tiktok: "#000000",
+  google: "#4285F4",
+  website: BRAND.navyTeal,
+  in_person: BRAND.rose,
+};
+
+const FALLBACK_CHART_COLOR = "#64748b";
+
+/** Returns the flat chart-fill color for a given raw `source` value, falling back to a neutral gray for any unrecognized value. */
+export function getSourceChartColor(source: string): string {
+  return SOURCE_CHART_COLOR[source] ?? FALLBACK_CHART_COLOR;
+}

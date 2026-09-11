@@ -206,8 +206,8 @@ export interface UpcomingAppointmentsResponse {
   reference_date: string;
 }
 
-/** One patient on the Needs Rebooking worklist: seen before, nothing scheduled going forward. */
-export interface NeedsRebookingItem {
+/** One patient on the Rebooking Opportunities worklist: seen before, nothing scheduled going forward. */
+export interface RebookingOpportunitiesItem {
   id: string;
   first_name: string;
   last_name: string;
@@ -216,9 +216,9 @@ export interface NeedsRebookingItem {
   last_appointment_date: string;
 }
 
-/** Paginated envelope for the Needs Rebooking worklist, sorted most-recently-seen first. */
-export interface NeedsRebookingResponse {
-  items: NeedsRebookingItem[];
+/** Paginated envelope for the Rebooking Opportunities worklist, sorted most-recently-seen first. */
+export interface RebookingOpportunitiesResponse {
+  items: RebookingOpportunitiesItem[];
   total: number;
   page: number;
   page_size: number;

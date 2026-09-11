@@ -14,9 +14,24 @@
  * fix -- see ATTENTION_TO_DETAIL.md) rather than a separate lookup, so this
  * and the All Patients search can never quietly drift apart on what counts
  * as a match.
+ *
+ * The overlay is rendered through a portal into `document.body`, not
+ * inline where this component sits in the tree. This component lives
+ * inside the root nav, and the nav has `backdrop-blur-xl` -- a CSS
+ * `backdrop-filter` on an ancestor creates a new *containing block* for any
+ * `position: fixed` descendant, which silently confines it to that
+ * ancestor's own small bounding box instead of the viewport. Without the
+ * portal, that made the backdrop render as a washed-out rectangle sized to
+ * the nav pill (looking like a broken overlay sitting on top of the nav)
+ * and, since the backdrop no longer covered anywhere near the actual page
+ * content, clicking outside the search card never landed on the
+ * close-on-backdrop-click handler at all -- only Escape worked. Portaling
+ * to `document.body` escapes the nav's containing block entirely, so
+ * `fixed inset-0` means the real viewport again.
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
@@ -98,7 +113,7 @@ export function GlobalPatientSearch() {
         <span className="hidden sm:inline">Search</span>
       </button>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
           className="fixed inset-0 z-[60] flex items-start justify-center bg-brand-dark/60 px-3 pt-24 backdrop-blur-sm"
           onClick={close}
@@ -143,7 +158,8 @@ export function GlobalPatientSearch() {
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, type PatientQueryParams } from "@/lib/api";
-import { calculateAge, formatCents, formatDate, formatLabel } from "@/lib/format";
+import { calculateAge, formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
 import { PatientFilters } from "./PatientFilters";
 import { SourceBadge } from "./SourceBadge";
 
@@ -57,11 +57,6 @@ export function PatientTable() {
       {data && (
         <>
           {/*
-            Deliberately fewer columns than the full patient record holds
-            (phone, email, address, and per-visit history all live one
-            click away on the Patient Detail page instead) — this is the
-            "most relevant at a glance" view, not the whole record.
-
             A plain HTML <table> doesn't reflow for narrow screens (its
             columns just get uncomfortably cramped, or force horizontal
             scrolling), so below `sm` it's replaced entirely by a stacked
@@ -69,48 +64,45 @@ export function PatientTable() {
             layout — this is the actual "works on all screen sizes" fix,
             not just letting the table scroll sideways.
           */}
-          <div className="hidden overflow-hidden rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10 sm:block">
+          <div className="hidden overflow-x-auto rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10 sm:block">
             {/*
-              `table-fixed` with an explicit percentage width on every
-              column (not just the narrow ones) is what keeps the columns
-              evenly, predictably spaced. Without it, the browser's default
-              auto-layout distributes all of the table's leftover width
-              across whichever columns *don't* have a width — since this
-              table is inside a now width-capped page (see layout.tsx),
-              that used to mean a handful of short-text columns getting
-              stretched into huge, uneven gaps.
-
-              Header uses a plain bottom border + small muted uppercase
-              labels instead of a solid fill block — a lighter, less
-              "boxed-in" treatment that reads as a modern data table rather
-              than a filled banner sitting on top of the rows. Numeric
-              columns (Age, Appointments, Spent) are right-aligned, text
-              columns left-aligned, so each column's own values line up
-              the way they're actually meant to be scanned/compared.
+              No `table-fixed`/percentage widths -- Phone and Email are
+              dimensionally-critical columns the same way they are on the
+              schedule tables (see TodaysAppointmentsTable for the
+              truncation bug that caused), so this uses the same
+              content-based `table-auto` + `whitespace-nowrap` sizing, with
+              `overflow-x-auto` on the wrapper as the fallback on narrower
+              screens now that there are nine columns to fit. Every column
+              is left-aligned, including the numeric ones -- a deliberate,
+              explicit request, not the usual right-aligned-numbers
+              convention, since a per-column mix of alignments here read as
+              inconsistent/broken rather than as a meaningful signal.
             */}
-            <table className="w-full table-fixed text-sm">
+            <table className="w-full text-sm">
               <thead className="text-left text-brand-dark">
                 <tr className="border-b border-brand-gold/20">
-                  <th className="w-[26%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Name</th>
-                  <th className="w-[8%] whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Age</th>
-                  <th className="w-[11%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Gender</th>
-                  <th className="w-[17%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Source</th>
-                  <th className="w-[16%] whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Joined</th>
-                  <th className="w-[12%] whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Appointments</th>
-                  <th className="w-[10%] whitespace-nowrap px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Spent</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Name</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Email</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Age</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Gender</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Source</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Joined</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Appointments</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Spent</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-dark/5 text-brand-dark">
                 {/*
-                  Empty-state row. colSpan={7} must match the number of
-                  <th> columns in the header above (Name, Age, Gender,
-                  Source, Joined, Appts, Spent) — if a column is ever
-                  added/removed, update this number too or the empty-state
-                  cell will misalign.
+                  Empty-state row. colSpan={9} must match the number of
+                  <th> columns in the header above (Name, Phone, Email,
+                  Age, Gender, Source, Joined, Appointments, Spent) — if a
+                  column is ever added/removed, update this number too or
+                  the empty-state cell will misalign.
                 */}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-6 text-center text-brand-sage">
+                    <td colSpan={9} className="p-6 text-center text-brand-sage">
                       No patients match these filters.
                     </td>
                   </tr>
@@ -121,13 +113,15 @@ export function PatientTable() {
                     onClick={() => router.push(`/patients/${patient.id}`)}
                     className="cursor-pointer transition-colors hover:bg-brand-gold/5"
                   >
-                    <td className="truncate px-4 py-3.5">{patient.first_name} {patient.last_name}</td>
-                    <td className="px-4 py-3.5 text-right">{calculateAge(patient.date_of_birth)}</td>
-                    <td className="px-4 py-3.5">{formatLabel(patient.gender)}</td>
-                    <td className="px-4 py-3.5"><SourceBadge source={patient.source} size="compact" /></td>
-                    <td className="px-4 py-3.5">{formatDate(patient.created_date)}</td>
-                    <td className="px-4 py-3.5 text-right">{patient.appointment_count}</td>
-                    <td className="px-4 py-3.5 text-right">{formatCents(patient.total_spent_cents)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{patient.first_name} {patient.last_name}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{formatPhone(patient.phone)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{patient.email}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{calculateAge(patient.date_of_birth)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{formatLabel(patient.gender)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5"><SourceBadge source={patient.source} size="compact" /></td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{formatDate(patient.created_date)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{patient.appointment_count}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{formatCents(patient.total_spent_cents)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -151,6 +145,7 @@ export function PatientTable() {
                   <p className="font-medium">{patient.first_name} {patient.last_name}</p>
                   <SourceBadge source={patient.source} size="compact" />
                 </div>
+                <p className="mt-1 text-sm text-brand-dark/60">{formatPhone(patient.phone)} · {patient.email}</p>
                 <p className="mt-1 text-sm text-brand-dark/60">
                   {calculateAge(patient.date_of_birth)} · {formatLabel(patient.gender)} · Joined {formatDate(patient.created_date)}
                 </p>

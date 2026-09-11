@@ -175,7 +175,7 @@ class UpcomingAppointmentsResponse(BaseModel):
     reference_date: date
 
 
-class NeedsRebookingItem(BaseModel):
+class RebookingOpportunitiesItem(BaseModel):
     """One patient who has been seen before but has nothing scheduled going forward --
     a rebooking/outreach candidate, not just a demographic record.
     """
@@ -190,12 +190,12 @@ class NeedsRebookingItem(BaseModel):
     last_appointment_date: datetime
 
 
-class NeedsRebookingResponse(BaseModel):
-    """A page of the Needs Rebooking list, sorted most-recently-seen first (the most
+class RebookingOpportunitiesResponse(BaseModel):
+    """A page of the Rebooking Opportunities list, sorted most-recently-seen first (the most
     actionable candidates -- likely still engaged, not a years-stale lead).
     """
 
-    items: list[NeedsRebookingItem]
+    items: list[RebookingOpportunitiesItem]
     total: int
     page: int
     page_size: int

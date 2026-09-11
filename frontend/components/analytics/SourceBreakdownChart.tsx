@@ -10,8 +10,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import { api } from "@/lib/api";
-import { CATEGORICAL_PALETTE } from "@/lib/chartColors";
 import { formatLabel } from "@/lib/format";
+import { getSourceChartColor } from "@/lib/sourceColors";
 
 /** Fetches and renders the patient-source breakdown as a pie chart. */
 export function SourceBreakdownChart() {
@@ -33,12 +33,22 @@ export function SourceBreakdownChart() {
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
-      <h2 className="mb-4 font-medium text-brand-dark">How Patients Find Us</h2>
+      <h2 className="mb-4 text-center font-medium text-brand-dark">How Patients Find Us</h2>
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
           <Pie data={chartData} dataKey="patient_count" nameKey="source" outerRadius={100} label>
-            {data.map((_, index) => (
-              <Cell key={index} fill={CATEGORICAL_PALETTE[index % CATEGORICAL_PALETTE.length]} />
+            {/*
+              IMPORTANT: iterates the ORIGINAL raw `data` array (e.g.
+              "in_person"), not `chartData` (formatLabel()'d to "In
+              Person") -- `getSourceChartColor` (like `SOURCE_BADGE_STYLE`
+              behind the Patient Table's source badges) is keyed by the raw
+              backend enum value. Matches each slice to the same real
+              per-channel brand color already used everywhere else a
+              source appears (e.g. Instagram's pink, Google's blue), not a
+              generic, unrelated chart palette.
+            */}
+            {data.map((entry, index) => (
+              <Cell key={index} fill={getSourceChartColor(entry.source)} />
             ))}
           </Pie>
           <Tooltip />

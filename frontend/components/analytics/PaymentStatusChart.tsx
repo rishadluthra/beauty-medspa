@@ -31,7 +31,7 @@ export function PaymentStatusChart() {
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
-      <h2 className="mb-4 font-medium text-brand-dark">Payment Status</h2>
+      <h2 className="mb-4 text-center font-medium text-brand-dark">Payment Status</h2>
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
           <Pie data={chartData} dataKey="count" nameKey="status" outerRadius={100} label>

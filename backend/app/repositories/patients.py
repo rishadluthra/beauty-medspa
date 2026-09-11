@@ -19,13 +19,13 @@ from app.schemas.patient import (
     AppointmentServiceItem,
     CalendarDayCount,
     CalendarMonthResponse,
-    NeedsRebookingItem,
-    NeedsRebookingResponse,
     PatientDetail,
     PatientDetailResponse,
     PatientListItem,
     PatientListResponse,
     PaymentSummary,
+    RebookingOpportunitiesItem,
+    RebookingOpportunitiesResponse,
     TodaysAppointmentItem,
     TodaysAppointmentsResponse,
     UpcomingAppointmentsResponse,
@@ -46,10 +46,12 @@ def _years_before(from_date: date, years: int) -> date:
 class PatientFilters:
     """Optional filters for `list_patients`.
 
-    `search` matches (case-insensitively) against patient name (anywhere),
-    email (from the start only -- see `list_patients` for why an unanchored
-    email match produced false-positive results in this dataset), or phone
-    (anywhere). `source` and `gender` are exact-match filters. `created_from`/
+    `search` matches (case-insensitively) against patient name (anywhere) or
+    phone (anywhere) always; it additionally matches email (from the start
+    of the address only) but ONLY when the term contains "@" -- see
+    `list_patients` for why a plain name-shaped term matching against email
+    produced false-positive results in this dataset even after anchoring.
+    `source` and `gender` are exact-match filters. `created_from`/
     `created_to` filter on `Patient.created_date` (inclusive on both ends —
     `created_to` covers the entire day, not just midnight). `age_min`/
     `age_max` filter on age *as of today*, computed from `date_of_birth`
@@ -136,30 +138,40 @@ async def list_patients(
 
     if filters.search:
         term = filters.search.lower()
-        query = query.where(
+        name_or_phone_match = (
             # Name matching is a genuine "contains anywhere" fuzzy search --
             # a substring of someone's real name is meaningfully related to
             # them, so matching it anywhere in "first last" is correct.
             func.lower(Patient.first_name + " " + Patient.last_name).like(f"%{term}%")
-            # Email is NOT matched the same way. In this seed dataset, email
-            # addresses are generated independently of the patient's actual
-            # identity (verified directly -- e.g. "Angela Abbott" has the
-            # email "andrearogers@example.org") and every address shares the
-            # same handful of domains. An unanchored "%term%" match against
-            # that turns any common word into a firehose: searching
-            # "example" (present in literally every email's domain) matched
-            # all 4,000 patients, and searching a real last name like
-            # "abbott" pulled in unrelated patients (e.g. "Daniel Chambers",
-            # whose randomly generated email happens to be
-            # "qabbott@example.org") right alongside the actual Abbotts --
-            # this was reported as the search "showing incorrect matches".
-            # Anchoring to the START of the email instead matches how an
-            # agent actually types a known email address (from the
-            # beginning), while eliminating coincidental mid-string and
-            # domain-fragment collisions.
-            | func.lower(Patient.email).like(f"{term}%")
             | Patient.phone.like(f"%{filters.search}%")
         )
+        # Email is matched only when the search term actually looks like an
+        # email address (contains "@"), not for a plain name-shaped query --
+        # and even then, only from the START of the address. Both
+        # restrictions exist because of the same underlying data-quality
+        # property: this seed dataset's email local-parts are drawn from a
+        # pool of name-like tokens assigned INDEPENDENTLY of the patient's
+        # real identity (already documented elsewhere in this file for
+        # gender/first_name and appointment status/time). That's not just a
+        # theoretical risk -- verified directly against the live data:
+        # searching "abbott" (with a plain, unanchored match) pulled in
+        # patients whose random email merely CONTAINED "abbott"; even after
+        # anchoring email matching to the start of the address, searching
+        # "alicia" still returned "Elizabeth Blackburn" and "Karen Garcia"
+        # (completely unrelated patients) because their real, random emails
+        # happen to legitimately START WITH "alicia" (e.g.
+        # "alicia50@example.net") -- anchoring alone cannot fix a false
+        # positive that IS the real, anchored start of the string. Since a
+        # plain name-shaped search term has no reliable way to distinguish
+        # "the start of a coincidental email" from "the start of a real
+        # email", the only robust fix is to not treat a name-shaped query as
+        # a potential email at all -- only a term that already contains "@"
+        # (i.e. someone actually typing or pasting an email address) enables
+        # this predicate.
+        if "@" in filters.search:
+            query = query.where(name_or_phone_match | func.lower(Patient.email).like(f"{term}%"))
+        else:
+            query = query.where(name_or_phone_match)
     if filters.source:
         query = query.where(Patient.source == filters.source)
     if filters.gender:
@@ -619,9 +631,9 @@ async def list_upcoming_appointments(
     )
 
 
-async def list_needs_rebooking(
+async def list_rebooking_opportunities(
     db: AsyncSession, page: int = 1, page_size: int = 25,
-) -> NeedsRebookingResponse:
+) -> RebookingOpportunitiesResponse:
     """List patients who have been seen before but have nothing scheduled going forward --
     the front desk's outreach/rebooking worklist, not just a demographic filter.
 
@@ -672,13 +684,13 @@ async def list_needs_rebooking(
     rows = (await db.execute(query)).all()
 
     items = [
-        NeedsRebookingItem(
+        RebookingOpportunitiesItem(
             id=patient.id, first_name=patient.first_name, last_name=patient.last_name,
             phone=patient.phone, email=patient.email, last_appointment_date=last_appointment_date,
         )
         for patient, last_appointment_date in rows
     ]
 
-    return NeedsRebookingResponse(
+    return RebookingOpportunitiesResponse(
         items=items, total=total, page=page, page_size=page_size, reference_date=reference_now.date(),
     )

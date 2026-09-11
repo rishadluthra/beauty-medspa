@@ -29,11 +29,11 @@ export function RevenueChart() {
 
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
-      <h2 className="mb-4 font-medium text-brand-dark">Revenue Over Time</h2>
+      <h2 className="mb-4 text-center font-medium text-brand-dark">Revenue Over Time</h2>
       <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={chartData}>
+        <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="period" />
+          <XAxis dataKey="period" tickMargin={8} />
           {/*
             `(v) => ... (v as number)` rather than `(v: number) => ...` is
             deliberate, not a typo: Recharts' TS types for tickFormatter /
@@ -42,8 +42,13 @@ export function RevenueChart() {
             compile against those types. Casting inside the function body
             is the fix — safe here since this chart's own data is always
             numeric.
+
+            `width={72}` is explicit rather than left at Recharts' default
+            (60px) -- a currency-formatted tick like "$25,000" is wider
+            than the plain integers the default width assumes, and was
+            getting clipped against the left edge of the chart without it.
           */}
-          <YAxis tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
+          <YAxis width={72} tickMargin={8} tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
           <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
           <Line type="monotone" dataKey="revenue" name="Revenue" stroke={BRAND.navyTeal} strokeWidth={2} dot={false} />
         </LineChart>

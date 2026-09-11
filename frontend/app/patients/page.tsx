@@ -11,15 +11,15 @@
  *   today, without needing a whole separate tab for it (see below).
  * - "Calendar": a month-at-a-glance density grid, for spotting a heavy day
  *   before drilling into it, rather than paging through days one at a time.
- * - "Needs Rebooking": patients who have been seen before but have nothing
- *   scheduled going forward -- an outreach worklist, the one view here
- *   about who *isn't* on the books rather than who is.
  * - "Walk-In Availability": pick a service and a moment, see which
  *   providers are free to take a walk-in right now (and when the busy ones
  *   free up) -- a different question again, about open capacity rather
  *   than existing appointments.
  * - "All Patients": the full searchable/filterable/sortable roster (what
  *   this page used to be exclusively).
+ * - "Rebooking Opportunities": patients who have been seen before but have
+ *   nothing scheduled going forward -- an outreach worklist, the one view
+ *   here about who *isn't* on the books rather than who is.
  *
  * There used to be a separate "Upcoming Appointments" tab (one row per
  * patient, their soonest booking after today) here too. It was retired
@@ -33,17 +33,17 @@
 import { useState } from "react";
 
 import { CalendarView } from "@/components/patients/CalendarView";
-import { NeedsRebookingTable } from "@/components/patients/NeedsRebookingTable";
 import { PatientTable } from "@/components/patients/PatientTable";
+import { RebookingOpportunitiesTable } from "@/components/patients/RebookingOpportunitiesTable";
 import { TodaysAppointmentsTable } from "@/components/patients/TodaysAppointmentsTable";
 import { WalkInAvailability } from "@/components/patients/WalkInAvailability";
 
 const TABS = [
   { key: "today", label: "Today's Appointments" },
   { key: "calendar", label: "Calendar" },
-  { key: "rebooking", label: "Needs Rebooking" },
   { key: "walkin", label: "Walk-In Availability" },
   { key: "all", label: "All Patients" },
+  { key: "rebooking", label: "Rebooking Opportunities" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -76,9 +76,9 @@ export default function PatientsPage() {
 
       {tab === "today" && <TodaysAppointmentsTable />}
       {tab === "calendar" && <CalendarView />}
-      {tab === "rebooking" && <NeedsRebookingTable />}
       {tab === "walkin" && <WalkInAvailability />}
       {tab === "all" && <PatientTable />}
+      {tab === "rebooking" && <RebookingOpportunitiesTable />}
     </div>
   );
 }
