@@ -10,6 +10,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { GlobalPatientSearch } from "@/components/GlobalPatientSearch";
+
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -39,19 +41,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="sticky top-3 z-50 flex justify-center px-3 lg:top-4 lg:px-8">
             <nav className="flex w-full max-w-lg items-center justify-between rounded-full border border-brand-gold/10 bg-brand-bg/80 px-6 py-3 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl 2xl:max-w-xl">
               <span className="text-lg font-bold tracking-tight">Beauty Med Spa</span>
-              <div className="flex gap-8">
-                <Link
-                  href="/patients"
-                  className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
-                >
-                  Patients
-                </Link>
-                <Link
-                  href="/analytics"
-                  className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
-                >
-                  Analytics
-                </Link>
+              <div className="flex items-center gap-4">
+                <GlobalPatientSearch />
+                <div className="flex gap-8">
+                  <Link
+                    href="/patients"
+                    className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
+                  >
+                    Patients
+                  </Link>
+                  <Link
+                    href="/analytics"
+                    className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
+                  >
+                    Analytics
+                  </Link>
+                </div>
               </div>
             </nav>
           </div>

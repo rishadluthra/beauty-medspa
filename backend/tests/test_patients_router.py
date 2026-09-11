@@ -107,6 +107,24 @@ async def test_get_todays_appointments_endpoint_is_reachable(db_session):
     app.dependency_overrides.clear()
 
 
+async def test_get_needs_rebooking_endpoint_is_reachable(db_session):
+    """GET /api/patients/needs-rebooking must resolve to its own handler, not fall through
+    to /api/patients/{patient_id} with patient_id="needs-rebooking".
+    """
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/patients/needs-rebooking")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert "reference_date" in body
+
+    app.dependency_overrides.clear()
+
+
 async def test_get_calendar_endpoint_is_reachable_and_accepts_month_param(db_session):
     """GET /api/patients/calendar must resolve to its own handler (not fall through to
     /api/patients/{patient_id}), and an explicit ?month=YYYY-MM must be honored rather

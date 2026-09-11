@@ -11,6 +11,7 @@ from app.repositories.patients import (
     PatientFilters,
     get_calendar_month,
     get_patient_detail,
+    list_needs_rebooking,
     list_patients,
     list_schedule_for_date,
     list_todays_appointments,
@@ -622,3 +623,51 @@ async def test_list_patients_search_matches_phone_anywhere(db_session):
     result = await list_patients(db_session, PatientFilters(search="4567"))
 
     assert [item.id for item in result.items] == ["pat_1"]
+
+
+async def test_list_needs_rebooking_selects_past_only_patients_sorted_most_recent_first(db_session):
+    """Covers the Needs Rebooking contract in one seeded scenario, anchored to
+    reference_date = 2026-01-01 (set by the Feb 2026 appointment below):
+
+    - pat_a and pat_b both have only past (non-cancelled) appointments and nothing
+      scheduled today or later -- both qualify, sorted by last visit, most recent first
+      (pat_a's Dec 20 visit before pat_b's Dec 1 visit).
+    - pat_c has an appointment scheduled exactly on the reference date (today) -- excluded
+      entirely, since "today" counts as already having something on the books.
+    - pat_d has an appointment further in the future -- excluded, same reasoning.
+    - pat_e's only appointment is cancelled -- excluded; a cancelled booking isn't a real
+      past visit to rebook from.
+    - pat_f has no appointments at all -- excluded; never having been a real patient isn't
+      the same as lapsing.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Alice", last_name="Anderson"),
+        make_patient(id="pat_b", first_name="Bob", last_name="Baker"),
+        make_patient(id="pat_c", first_name="Carol", last_name="Carter"),
+        make_patient(id="pat_d", first_name="Dana", last_name="Dean"),
+        make_patient(id="pat_e", first_name="Eve", last_name="Evans"),
+        make_patient(id="pat_f", first_name="Frank", last_name="Foster"),
+        make_provider(), make_service(),
+        make_appointment(id="apt_a", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_b", patient_id="pat_b", status="confirmed"),
+        make_appointment(id="apt_c_today", patient_id="pat_c", status="confirmed"),
+        make_appointment(id="apt_d_future", patient_id="pat_d", status="confirmed"),
+        make_appointment(id="apt_e_cancelled", patient_id="pat_e", status="cancelled"),
+        make_appointment(id="apt_latest", patient_id="pat_d", status="confirmed"),  # sets the latest data month
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_a", start=datetime(2025, 12, 20, 9, 0), end=datetime(2025, 12, 20, 9, 30)),
+        make_appointment_service(appointment_id="apt_b", start=datetime(2025, 12, 1, 9, 0), end=datetime(2025, 12, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_c_today", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_d_future", start=datetime(2026, 1, 15, 9, 0), end=datetime(2026, 1, 15, 9, 30)),
+        make_appointment_service(appointment_id="apt_e_cancelled", start=datetime(2025, 12, 10, 9, 0), end=datetime(2025, 12, 10, 9, 30)),
+        make_appointment_service(appointment_id="apt_latest", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    result = await list_needs_rebooking(db_session)
+
+    assert result.reference_date == date(2026, 1, 1)
+    assert [item.id for item in result.items] == ["pat_a", "pat_b"]  # most recent visit first
+    assert result.items[0].last_appointment_date == datetime(2025, 12, 20, 9, 0)

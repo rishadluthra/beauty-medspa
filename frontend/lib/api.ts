@@ -14,6 +14,7 @@ import type {
   AvailabilityResponse,
   CalendarMonthResponse,
   DemographicsResponse,
+  NeedsRebookingResponse,
   OverviewStats,
   PatientDetailResponse,
   PatientListResponse,
@@ -86,6 +87,9 @@ export const api = {
   /** Fetches a page of the Upcoming Appointments dashboard (patients scheduled after today). `provider_id` narrows to one provider's own upcoming schedule. */
   getUpcomingAppointments: (params: { page?: number; page_size?: number; provider_id?: string }) =>
     apiGet<UpcomingAppointmentsResponse>("/api/patients/upcoming", { ...params }),
+  /** Fetches a page of the Needs Rebooking worklist (seen before, nothing scheduled going forward), most-recently-seen first. */
+  getNeedsRebooking: (params: { page?: number; page_size?: number }) =>
+    apiGet<NeedsRebookingResponse>("/api/patients/needs-rebooking", { ...params }),
   /** Fetches every provider, for populating the schedule views' provider filter. */
   getProviders: () => apiGet<ProviderListResponse>("/api/providers"),
   /** Fetches one calendar month's day-by-day appointment density, for the Calendar view's grid. Omitting `month` defaults to the dataset's reference month. */

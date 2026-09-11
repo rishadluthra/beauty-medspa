@@ -2,9 +2,9 @@
 
 /**
  * Provider filter dropdown shared by TodaysAppointmentsTable and
- * UpcomingAppointmentsTable — lets a front desk agent narrow either
+ * CalendarView's day drill-down — lets a front desk agent narrow either
  * schedule view down to one provider's own appointments (e.g. "what does
- * Dr. Smith have today" or "what's coming up for Dr. Jones").
+ * Dr. Smith have today" or "what does Dr. Jones have on this day").
  */
 
 import { useQuery } from "@tanstack/react-query";

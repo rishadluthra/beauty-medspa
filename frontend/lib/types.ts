@@ -206,6 +206,26 @@ export interface UpcomingAppointmentsResponse {
   reference_date: string;
 }
 
+/** One patient on the Needs Rebooking worklist: seen before, nothing scheduled going forward. */
+export interface NeedsRebookingItem {
+  id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  last_appointment_date: string;
+}
+
+/** Paginated envelope for the Needs Rebooking worklist, sorted most-recently-seen first. */
+export interface NeedsRebookingResponse {
+  items: NeedsRebookingItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  /** The effective "today" this view was computed against — see the backend for why it isn't always the real current date. */
+  reference_date: string;
+}
+
 /** One day's scheduled (non-cancelled) service count, for the Calendar view's density grid. */
 export interface CalendarDayCount {
   date: string;

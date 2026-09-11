@@ -19,6 +19,8 @@ from app.schemas.patient import (
     AppointmentServiceItem,
     CalendarDayCount,
     CalendarMonthResponse,
+    NeedsRebookingItem,
+    NeedsRebookingResponse,
     PatientDetail,
     PatientDetailResponse,
     PatientListItem,
@@ -614,4 +616,69 @@ async def list_upcoming_appointments(
 
     return UpcomingAppointmentsResponse(
         items=items, total=total, page=page, page_size=page_size, reference_date=reference_date,
+    )
+
+
+async def list_needs_rebooking(
+    db: AsyncSession, page: int = 1, page_size: int = 25,
+) -> NeedsRebookingResponse:
+    """List patients who have been seen before but have nothing scheduled going forward --
+    the front desk's outreach/rebooking worklist, not just a demographic filter.
+
+    A patient qualifies if they have at least one non-cancelled appointment AND none of
+    their non-cancelled appointments start on or after the reference "today" (see
+    `get_reference_now`) -- i.e. nothing scheduled today, and nothing upcoming either.
+    Sorted by their most recent visit, most-recent-first: a patient seen last week is a far
+    more promising rebooking call than one seen a year ago, and this ordering surfaces the
+    best candidates first without an arbitrary "seen within N days" cutoff that would
+    silently hide someone worth calling.
+    """
+    reference_now = await get_reference_now(db)
+
+    # Patients with ANY non-cancelled appointment starting today or later already have
+    # something on the books and don't belong on a rebooking list -- excluded via an
+    # anti-join (LEFT JOIN ... WHERE NULL) below, not a NOT IN subquery, to avoid the
+    # classic NOT IN + NULL pitfall entirely.
+    has_upcoming = (
+        select(Appointment.patient_id)
+        .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
+        .where(Appointment.status != "cancelled", AppointmentService.start >= reference_now)
+        .distinct()
+        .subquery()
+    )
+
+    # Each patient's most recent non-cancelled visit. No additional time filter is needed
+    # here beyond the anti-join above: by construction, anyone who reaches this list has no
+    # non-cancelled appointment >= reference_now, so this MAX() is already guaranteed to
+    # land in the past.
+    last_appointment = (
+        select(Appointment.patient_id, func.max(AppointmentService.start).label("last_appointment_date"))
+        .join(AppointmentService, AppointmentService.appointment_id == Appointment.id)
+        .where(Appointment.status != "cancelled")
+        .group_by(Appointment.patient_id)
+        .subquery()
+    )
+
+    query = (
+        select(Patient, last_appointment.c.last_appointment_date)
+        .join(last_appointment, last_appointment.c.patient_id == Patient.id)
+        .outerjoin(has_upcoming, has_upcoming.c.patient_id == Patient.id)
+        .where(has_upcoming.c.patient_id.is_(None))
+        .order_by(last_appointment.c.last_appointment_date.desc())
+    )
+
+    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    rows = (await db.execute(query)).all()
+
+    items = [
+        NeedsRebookingItem(
+            id=patient.id, first_name=patient.first_name, last_name=patient.last_name,
+            phone=patient.phone, email=patient.email, last_appointment_date=last_appointment_date,
+        )
+        for patient, last_appointment_date in rows
+    ]
+
+    return NeedsRebookingResponse(
+        items=items, total=total, page=page, page_size=page_size, reference_date=reference_now.date(),
     )

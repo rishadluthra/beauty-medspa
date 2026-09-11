@@ -22,6 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 
+import { ComingUpStrip } from "./ComingUpStrip";
 import { ProviderFilterSelect } from "./ProviderFilterSelect";
 import { ScheduleTable } from "./ScheduleTable";
 
@@ -59,6 +60,8 @@ export function TodaysAppointmentsTable() {
         errorMessage="Could not load today's schedule. Please try again."
         emptyMessage={`No appointments scheduled today${providerId ? " for this provider" : ""}.`}
       />
+
+      <ComingUpStrip />
     </div>
   );
 }

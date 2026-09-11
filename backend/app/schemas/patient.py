@@ -175,6 +175,35 @@ class UpcomingAppointmentsResponse(BaseModel):
     reference_date: date
 
 
+class NeedsRebookingItem(BaseModel):
+    """One patient who has been seen before but has nothing scheduled going forward --
+    a rebooking/outreach candidate, not just a demographic record.
+    """
+
+    id: str
+    first_name: str
+    last_name: str
+    phone: str
+    email: str
+    # Their most recent non-cancelled visit -- always in the past, since a patient with
+    # anything scheduled today or later doesn't qualify for this list at all.
+    last_appointment_date: datetime
+
+
+class NeedsRebookingResponse(BaseModel):
+    """A page of the Needs Rebooking list, sorted most-recently-seen first (the most
+    actionable candidates -- likely still engaged, not a years-stale lead).
+    """
+
+    items: list[NeedsRebookingItem]
+    total: int
+    page: int
+    page_size: int
+    # The effective "today" this view was computed against -- see
+    # `get_reference_now` for why this isn't always the real current date.
+    reference_date: date
+
+
 class CalendarDayCount(BaseModel):
     """One day's scheduled (non-cancelled) service count, for the calendar view's density grid."""
 

@@ -2,41 +2,46 @@
 
 /**
  * Patients page (`/patients`) — one of the two pages required by the spec.
- * Three views live here, switched by a tab, rather than one combined table:
+ * Several views live here, switched by a tab, rather than one combined table:
  *
  * - "Today's Appointments" (the default): the front desk's actual first
  *   question each day — who's coming in, when, for what, with whom. One
- *   row per scheduled service, sorted by time.
- * - "Upcoming Appointments": patients with a scheduled appointment after
- *   today, one row per patient (their next visit) — for planning ahead,
- *   not the immediate day-of schedule.
+ *   row per scheduled service, sorted by time. A compact "Coming Up" strip
+ *   underneath gives a quick glance at the next few appointments beyond
+ *   today, without needing a whole separate tab for it (see below).
  * - "Calendar": a month-at-a-glance density grid, for spotting a heavy day
  *   before drilling into it, rather than paging through days one at a time.
+ * - "Needs Rebooking": patients who have been seen before but have nothing
+ *   scheduled going forward -- an outreach worklist, the one view here
+ *   about who *isn't* on the books rather than who is.
  * - "Walk-In Availability": pick a service and a moment, see which
  *   providers are free to take a walk-in right now (and when the busy ones
- *   free up) -- a different question from the other tabs, which are all
- *   about *existing* appointments rather than open capacity.
+ *   free up) -- a different question again, about open capacity rather
+ *   than existing appointments.
  * - "All Patients": the full searchable/filterable/sortable roster (what
  *   this page used to be exclusively).
  *
- * These are different enough in shape and purpose (today's schedule vs.
- * future bookings vs. a month overview vs. open capacity vs. the entire
- * patient base) that combining them into one table with a filter would
- * have made none of them fast to scan.
+ * There used to be a separate "Upcoming Appointments" tab (one row per
+ * patient, their soonest booking after today) here too. It was retired
+ * once the Calendar view shipped: Calendar already covers deep drill-down
+ * into any future day, so a whole paginated tab over the same underlying
+ * data added little beyond what the "Coming Up" strip below now covers in
+ * a glance. The `list_upcoming_appointments` backend query itself is kept
+ * (see `ComingUpStrip`) -- only the full-page presentation of it is gone.
  */
 
 import { useState } from "react";
 
 import { CalendarView } from "@/components/patients/CalendarView";
+import { NeedsRebookingTable } from "@/components/patients/NeedsRebookingTable";
 import { PatientTable } from "@/components/patients/PatientTable";
 import { TodaysAppointmentsTable } from "@/components/patients/TodaysAppointmentsTable";
-import { UpcomingAppointmentsTable } from "@/components/patients/UpcomingAppointmentsTable";
 import { WalkInAvailability } from "@/components/patients/WalkInAvailability";
 
 const TABS = [
   { key: "today", label: "Today's Appointments" },
-  { key: "upcoming", label: "Upcoming Appointments" },
   { key: "calendar", label: "Calendar" },
+  { key: "rebooking", label: "Needs Rebooking" },
   { key: "walkin", label: "Walk-In Availability" },
   { key: "all", label: "All Patients" },
 ] as const;
@@ -70,8 +75,8 @@ export default function PatientsPage() {
       </div>
 
       {tab === "today" && <TodaysAppointmentsTable />}
-      {tab === "upcoming" && <UpcomingAppointmentsTable />}
       {tab === "calendar" && <CalendarView />}
+      {tab === "rebooking" && <NeedsRebookingTable />}
       {tab === "walkin" && <WalkInAvailability />}
       {tab === "all" && <PatientTable />}
     </div>
