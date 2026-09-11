@@ -1,0 +1,48 @@
+"use client";
+
+/**
+ * The nav's "Front Desk" / "Analytics" links, highlighting whichever one
+ * matches the current route -- the nav previously gave no visual sign of
+ * which page you were actually on. Split out from the root layout (a
+ * Server Component) into its own small client component specifically
+ * because active-route detection needs `usePathname()`, a client-only
+ * hook -- this keeps that requirement scoped to just the two links
+ * instead of forcing the whole nav (and layout) to become a Client
+ * Component.
+ *
+ * "Front Desk" is active for `/patients` AND `/patients/{id}` /
+ * `/appointments/{id}` (its own drill-down pages) -- not just an exact
+ * `/patients` match -- since those pages are still part of that section.
+ */
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const LINKS = [
+  { href: "/patients", label: "Front Desk", isActive: (path: string) => path.startsWith("/patients") || path.startsWith("/appointments") },
+  { href: "/analytics", label: "Analytics", isActive: (path: string) => path.startsWith("/analytics") },
+];
+
+export function NavLinks() {
+  const pathname = usePathname();
+
+  return (
+    <>
+      {LINKS.map((link) => {
+        const active = link.isActive(pathname);
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            aria-current={active ? "page" : undefined}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              active ? "bg-brand-gold/20 text-brand-gold-dark" : "text-brand-dark/80 hover:text-brand-gold-dark"
+            }`}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
+    </>
+  );
+}

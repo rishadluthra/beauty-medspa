@@ -8,10 +8,10 @@
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { BrandMark } from "@/components/BrandMark";
 import { GlobalPatientSearch } from "@/components/GlobalPatientSearch";
+import { NavLinks } from "@/components/NavLinks";
 
 import { Providers } from "./providers";
 import "./globals.css";
@@ -91,24 +91,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 around) rather than undersellling it as one narrow view.
                 The route itself stays `/patients` -- that's about
                 where patient detail pages live (`/patients/{id}`), not
-                what this section is called in the nav.
+                what this section is called in the nav. `NavLinks`
+                highlights whichever of these actually matches the
+                current route.
               */}
               <div className="flex shrink-0 items-center gap-3 sm:gap-8">
                 <div className="w-9 sm:hidden">
                   <GlobalPatientSearch />
                 </div>
-                <Link
-                  href="/patients"
-                  className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
-                >
-                  Front Desk
-                </Link>
-                <Link
-                  href="/analytics"
-                  className="text-sm font-medium transition-colors hover:text-brand-gold-dark"
-                >
-                  Analytics
-                </Link>
+                <NavLinks />
               </div>
             </nav>
           </div>

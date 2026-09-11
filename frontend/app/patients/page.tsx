@@ -117,16 +117,23 @@ function PatientsPageContent() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
+          {/*
+            Every tab is its own translucent glass "bubble" now (border +
+            soft frosted fill + blur), not just bare text for the
+            unselected ones -- the active tab stays obviously distinct by
+            being solid/opaque instead of translucent, rather than being
+            the only one with any pill shape at all.
+          */}
           {TABS.map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
               aria-pressed={tab === t.key}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`rounded-full border px-4 py-1.5 text-sm font-medium backdrop-blur-sm transition-colors ${
                 tab === t.key
-                  ? "bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10"
-                  : "text-brand-bg/60 hover:text-brand-bg"
+                  ? "border-brand-bg/20 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10"
+                  : "border-brand-bg/20 bg-brand-bg/10 text-brand-bg/70 hover:border-brand-gold hover:bg-brand-bg/20 hover:text-brand-bg"
               }`}
             >
               {t.label}
