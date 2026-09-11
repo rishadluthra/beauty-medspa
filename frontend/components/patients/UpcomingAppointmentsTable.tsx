@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * Upcoming Appointments dashboard — the default view on the Patients page.
- * Unlike `PatientTable` (the full patient roster), this shows one row per
- * patient with a scheduled future appointment, soonest first. See the
- * backend's `list_upcoming_appointments` for exactly what "upcoming"/
- * "today" mean against this seed dataset.
+ * Upcoming Appointments dashboard. Unlike `TodaysAppointmentsTable` (the
+ * immediate day-of schedule) and `PatientTable` (the full roster), this
+ * shows one row per patient with their soonest appointment *after* today,
+ * for planning ahead rather than day-of operations. See the backend's
+ * `list_upcoming_appointments` for exactly what "today" means against
+ * this seed dataset.
  */
 
 import { useState } from "react";
@@ -13,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import { calculateAge, formatDateTime, formatPhone } from "@/lib/format";
+import { calculateAge, formatDate, formatDateTime, formatPhone } from "@/lib/format";
 
 const PAGE_SIZE = 25;
 
@@ -28,6 +29,8 @@ export function UpcomingAppointmentsTable() {
 
   return (
     <div className="space-y-4">
+      {data && <p className="text-sm text-brand-bg/70">Scheduled after {formatDate(data.reference_date)}</p>}
+
       {isLoading && <p className="text-brand-bg/70">Loading upcoming appointments…</p>}
       {isError && <p className="text-coral">Could not load upcoming appointments. Please try again.</p>}
 

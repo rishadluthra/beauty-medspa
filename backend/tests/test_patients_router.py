@@ -86,3 +86,22 @@ async def test_get_upcoming_appointments_endpoint_is_reachable(db_session):
     assert "reference_date" in body
 
     app.dependency_overrides.clear()
+
+
+async def test_get_todays_appointments_endpoint_is_reachable(db_session):
+    """GET /api/patients/today must resolve to its own handler, not fall through to
+    /api/patients/{patient_id} with patient_id="today" -- same routing-order requirement
+    as /api/patients/upcoming.
+    """
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/patients/today")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert "reference_date" in body
+
+    app.dependency_overrides.clear()

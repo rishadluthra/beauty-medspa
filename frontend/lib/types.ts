@@ -162,6 +162,28 @@ export interface PatientDetailResponse {
   next_patient_id: string | null;
 }
 
+/** One scheduled service occurring "today", as returned by `GET /api/patients/today`. One row per service, not per patient. */
+export interface TodaysAppointmentItem {
+  id: number;
+  patient_id: string;
+  patient_name: string;
+  phone: string;
+  service_name: string;
+  provider_name: string;
+  start: string;
+  end: string;
+  status: string;
+}
+
+/** Paginated envelope for the Today's Appointments dashboard. */
+export interface TodaysAppointmentsResponse {
+  items: TodaysAppointmentItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  reference_date: string;
+}
+
 /** One row in the Upcoming Appointments dashboard, as returned by `GET /api/patients/upcoming`. */
 export interface UpcomingPatientItem {
   id: string;

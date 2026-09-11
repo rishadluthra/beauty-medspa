@@ -22,6 +22,8 @@ from app.schemas.patient import (
     PatientListItem,
     PatientListResponse,
     PaymentSummary,
+    TodaysAppointmentItem,
+    TodaysAppointmentsResponse,
     UpcomingAppointmentsResponse,
     UpcomingPatientItem,
 )
@@ -377,14 +379,70 @@ async def _get_upcoming_reference_now(db: AsyncSession) -> datetime:
     return latest_two_months[1]  # index 0 is the latest month; 1 is the one before it
 
 
+async def list_todays_appointments(
+    db: AsyncSession, page: int = 1, page_size: int = 100,
+) -> TodaysAppointmentsResponse:
+    """List every scheduled service occurring on the reference "today", for the front desk's
+    at-a-glance daily schedule -- see `_get_upcoming_reference_now` for what "today" means
+    against this seed dataset.
+
+    One row per `AppointmentService` (not per `Appointment`): a multi-service appointment
+    (e.g. consultation, then an X-ray with a different provider) occupies more than one
+    real time slot on the day's schedule, and a front desk agent needs to see each one,
+    not a single row that hides which provider is busy when. Cancelled appointments are
+    excluded entirely -- they aren't happening today regardless of what time they were
+    scheduled for.
+    """
+    reference_now = await _get_upcoming_reference_now(db)
+    reference_date = reference_now.date()
+    end_of_day = reference_now + timedelta(days=1)
+
+    query = (
+        select(
+            AppointmentService.id, Patient.id, Patient.first_name, Patient.last_name, Patient.phone,
+            Service.name, Provider.first_name, Provider.last_name,
+            AppointmentService.start, AppointmentService.end, Appointment.status,
+        )
+        .join(Appointment, Appointment.id == AppointmentService.appointment_id)
+        .join(Patient, Patient.id == Appointment.patient_id)
+        .join(Service, Service.id == AppointmentService.service_id)
+        .join(Provider, Provider.id == AppointmentService.provider_id)
+        .where(
+            Appointment.status != "cancelled",
+            AppointmentService.start >= reference_now,
+            AppointmentService.start < end_of_day,
+        )
+        .order_by(AppointmentService.start.asc())
+    )
+
+    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    rows = (await db.execute(query)).all()
+
+    items = [
+        TodaysAppointmentItem(
+            id=service_id, patient_id=patient_id, patient_name=f"{first_name} {last_name}", phone=phone,
+            service_name=service_name, provider_name=f"{provider_first} {provider_last}",
+            start=start, end=end, status=status,
+        )
+        for service_id, patient_id, first_name, last_name, phone, service_name, provider_first, provider_last, start, end, status in rows
+    ]
+
+    return TodaysAppointmentsResponse(
+        items=items, total=total, page=page, page_size=page_size, reference_date=reference_date,
+    )
+
+
 async def list_upcoming_appointments(
     db: AsyncSession, page: int = 1, page_size: int = 25,
 ) -> UpcomingAppointmentsResponse:
-    """List patients by their soonest upcoming appointment, for the front-desk-facing dashboard.
+    """List patients by their soonest upcoming appointment, for planning ahead beyond today.
 
     One row per patient (their single *soonest* non-cancelled appointment
-    on or after the reference "today" -- see `_get_upcoming_reference_now`),
-    sorted soonest-first.
+    strictly AFTER the reference "today" -- see `_get_upcoming_reference_now`),
+    sorted soonest-first. Today itself is deliberately excluded here -- it's
+    covered by `list_todays_appointments` instead, so the two views don't
+    show overlapping appointments.
     """
     # `_get_upcoming_reference_now` returns a `date_trunc('month', ...)`
     # result, which Postgres always normalizes to midnight on day 1 of that
@@ -392,6 +450,7 @@ async def list_upcoming_appointments(
     # "start of day" step needed here.
     reference_now = await _get_upcoming_reference_now(db)
     reference_date = reference_now.date()
+    end_of_reference_day = reference_now + timedelta(days=1)
 
     # Each non-cancelled appointment's earliest service start time (an
     # appointment itself has no date/time of its own -- see
@@ -410,9 +469,9 @@ async def list_upcoming_appointments(
         .subquery()
     )
 
-    # Of each patient's upcoming (>= the reference date) appointments, keep
-    # only the soonest one -- a patient with several upcoming bookings
-    # should appear once, for their next one.
+    # Of each patient's upcoming (after today) appointments, keep only the
+    # soonest one -- a patient with several upcoming bookings should appear
+    # once, for their next one.
     upcoming = (
         select(
             appointment_starts.c.patient_id, appointment_starts.c.status, appointment_starts.c.start,
@@ -420,7 +479,7 @@ async def list_upcoming_appointments(
                 partition_by=appointment_starts.c.patient_id, order_by=appointment_starts.c.start.asc(),
             ).label("rn"),
         )
-        .where(appointment_starts.c.start >= reference_now)
+        .where(appointment_starts.c.start >= end_of_reference_day)
         .subquery()
     )
     soonest_upcoming = select(upcoming).where(upcoming.c.rn == 1).subquery()

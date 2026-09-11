@@ -117,8 +117,41 @@ class PatientDetailResponse(BaseModel):
     next_patient_id: str | None
 
 
+class TodaysAppointmentItem(BaseModel):
+    """One scheduled service occurring on the reference "today" -- one row per
+    AppointmentService, not per Appointment, since a multi-service appointment (e.g.
+    consultation + X-ray) occupies multiple distinct time slots, possibly with different
+    providers, each of which is its own line on a front desk's schedule for the day.
+    Cancelled appointments are excluded entirely -- they aren't happening.
+    """
+
+    id: int  # the AppointmentService row's own surrogate id, so the frontend has a stable key per row
+    patient_id: str
+    patient_name: str
+    phone: str
+    service_name: str
+    provider_name: str
+    start: datetime
+    end: datetime
+    status: str
+
+
+class TodaysAppointmentsResponse(BaseModel):
+    """The full schedule for the reference "today", plus the date itself."""
+
+    items: list[TodaysAppointmentItem]
+    total: int
+    page: int
+    page_size: int
+    # The effective "today" this view was computed against -- see
+    # `_get_upcoming_reference_now` for why this isn't always the real current date.
+    reference_date: date
+
+
 class UpcomingPatientItem(BaseModel):
-    """One row in the Upcoming Appointments dashboard: a patient with a scheduled future appointment."""
+    """One row in the Upcoming Appointments dashboard: a patient with a scheduled appointment
+    after the reference "today" (today itself is covered by the Today's Appointments view instead).
+    """
 
     id: str
     first_name: str

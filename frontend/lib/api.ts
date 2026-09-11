@@ -19,6 +19,7 @@ import type {
   ProviderUtilizationItem,
   RevenuePoint,
   SourceBreakdownItem,
+  TodaysAppointmentsResponse,
   TopServiceItem,
   UpcomingAppointmentsResponse,
 } from "./types";
@@ -75,7 +76,10 @@ export interface PatientQueryParams {
 export const api = {
   /** Fetches a page of the patient table, with optional search/filter/sort. */
   getPatients: (params: PatientQueryParams) => apiGet<PatientListResponse>("/api/patients", { ...params }),
-  /** Fetches a page of the Upcoming Appointments dashboard (the default Patients-page view). */
+  /** Fetches today's full schedule (the default Patients-page view). */
+  getTodaysAppointments: (params: { page?: number; page_size?: number }) =>
+    apiGet<TodaysAppointmentsResponse>("/api/patients/today", { ...params }),
+  /** Fetches a page of the Upcoming Appointments dashboard (patients scheduled after today). */
   getUpcomingAppointments: (params: { page?: number; page_size?: number }) =>
     apiGet<UpcomingAppointmentsResponse>("/api/patients/upcoming", { ...params }),
   /**

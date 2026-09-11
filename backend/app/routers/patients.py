@@ -13,8 +13,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.repositories.patients import PatientFilters, get_patient_detail, list_patients, list_upcoming_appointments
-from app.schemas.patient import PatientDetailResponse, PatientListResponse, UpcomingAppointmentsResponse
+from app.repositories.patients import (
+    PatientFilters,
+    get_patient_detail,
+    list_patients,
+    list_todays_appointments,
+    list_upcoming_appointments,
+)
+from app.schemas.patient import (
+    PatientDetailResponse,
+    PatientListResponse,
+    TodaysAppointmentsResponse,
+    UpcomingAppointmentsResponse,
+)
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -50,20 +61,34 @@ async def get_patients(
 
 
 # Registered BEFORE `/{patient_id}` below -- FastAPI matches routes in
-# registration order, so a static "/upcoming" path declared after the
-# "/{patient_id}" dynamic route would never be reached (it would always
-# match "/{patient_id}" first, with patient_id="upcoming").
+# registration order, so a static path declared after the "/{patient_id}"
+# dynamic route would never be reached (it would always match
+# "/{patient_id}" first, with e.g. patient_id="today").
+@router.get("/today", response_model=TodaysAppointmentsResponse)
+async def get_todays_appointments(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+) -> TodaysAppointmentsResponse:
+    """The full schedule for "today" -- the front desk dashboard's default view.
+
+    See `list_todays_appointments` for what "today" means against this
+    static seed dataset, and why this is one row per scheduled service
+    rather than one row per patient.
+    """
+    return await list_todays_appointments(db, page=page, page_size=page_size)
+
+
 @router.get("/upcoming", response_model=UpcomingAppointmentsResponse)
 async def get_upcoming_appointments(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ) -> UpcomingAppointmentsResponse:
-    """List patients by their soonest upcoming appointment, for the front-desk dashboard's default view.
+    """List patients by their soonest appointment after today, for planning ahead.
 
-    See `list_upcoming_appointments` for what "upcoming" means against
-    this static seed dataset, and what the `needs_confirmation` /
-    `has_unpaid_appointment` follow-up flags are actually based on.
+    See `list_upcoming_appointments` for what "today" (and therefore
+    "after today") means against this static seed dataset.
     """
     return await list_upcoming_appointments(db, page=page, page_size=page_size)
 

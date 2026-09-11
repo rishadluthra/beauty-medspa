@@ -11,6 +11,7 @@ from app.repositories.patients import (
     PatientFilters,
     get_patient_detail,
     list_patients,
+    list_todays_appointments,
     list_upcoming_appointments,
 )
 from tests.factories import (
@@ -304,16 +305,16 @@ async def test_list_upcoming_appointments_anchors_to_first_of_second_to_last_dat
     assert result.reference_date == date(2025, 12, 1)
 
 
-async def test_list_upcoming_appointments_selects_soonest_and_excludes_cancelled_and_past(db_session):
+async def test_list_upcoming_appointments_selects_soonest_and_excludes_cancelled_past_and_today(db_session):
     """Covers the rest of the Upcoming Appointments contract in one seeded scenario, all
     anchored to reference_date = 2026-01-01 (set by the Feb 2026 appointment below):
 
-    - Each patient shows their *soonest* upcoming (non-cancelled, >= reference date)
-      appointment, even when they have more than one qualifying one (pat_a).
-    - A same-day appointment right at the start of the reference date counts as upcoming
-      (pat_b) -- the boundary is now inherently midnight (date_trunc to month start),
-      not an arbitrary time-of-day carried over from the data.
-    - A patient whose only on-or-after-reference appointment is cancelled (pat_c) doesn't
+    - Each patient shows their *soonest* upcoming (non-cancelled, strictly after reference
+      date) appointment, even when they have more than one qualifying one (pat_a).
+    - A same-day appointment right on the reference date does NOT count as "upcoming"
+      (pat_b) -- today is covered by list_todays_appointments instead, so the two views
+      must not double-show the same appointment.
+    - A patient whose only after-reference appointment is cancelled (pat_c) doesn't
       appear at all -- a cancelled booking isn't a real upcoming visit.
     - A patient with only appointments before the reference date (pat_d) doesn't appear.
     """
@@ -345,6 +346,56 @@ async def test_list_upcoming_appointments_selects_soonest_and_excludes_cancelled
 
     by_id = {item.id: item for item in result.items}
     assert by_id["pat_a"].upcoming_appointment_date == datetime(2026, 1, 15, 9, 0)
-    assert by_id["pat_b"].upcoming_appointment_date == datetime(2026, 1, 1, 0, 30)
+    assert "pat_b" not in by_id  # today, not upcoming
     assert "pat_c" not in by_id
     assert "pat_d" not in by_id
+
+
+async def test_list_todays_appointments_one_row_per_service_excludes_cancelled_and_other_days(db_session):
+    """Covers the Today's Appointments contract, anchored to reference_date = 2026-01-01
+    (set by the Feb 2026 appointment below):
+
+    - One row per AppointmentService scheduled on the reference date itself, not one row
+      per Appointment -- a multi-service appointment (pat_a's) produces two rows, one per
+      service, each with its own time and provider.
+    - A cancelled appointment scheduled today (pat_b's) is excluded entirely.
+    - Appointments on other days (before or after today) don't appear (pat_c's, and the
+      Feb appointment used only to set the latest data month).
+    - Rows are sorted by start time.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Alice", last_name="Anderson"),
+        make_patient(id="pat_b", first_name="Bob", last_name="Baker"),
+        make_patient(id="pat_c", first_name="Carol", last_name="Carter"),
+        make_provider(id="prv_1", first_name="Dr", last_name="Smith"),
+        make_provider(id="prv_2", first_name="Dr", last_name="Jones"),
+        make_service(id="svc_1", name="Consultation"),
+        make_service(id="svc_2", name="Facial"),
+        make_appointment(id="apt_a_today", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_a_later", patient_id="pat_a", status="confirmed"),  # sets the latest data month
+        make_appointment(id="apt_b_cancelled_today", patient_id="pat_b", status="cancelled"),
+        make_appointment(id="apt_c_tomorrow", patient_id="pat_c", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(
+            appointment_id="apt_a_today", service_id="svc_2", provider_id="prv_2",
+            start=datetime(2026, 1, 1, 14, 0), end=datetime(2026, 1, 1, 14, 30),
+        ),
+        make_appointment_service(
+            appointment_id="apt_a_today", service_id="svc_1", provider_id="prv_1",
+            start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30),
+        ),
+        make_appointment_service(appointment_id="apt_a_later", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+        make_appointment_service(appointment_id="apt_b_cancelled_today", start=datetime(2026, 1, 1, 11, 0), end=datetime(2026, 1, 1, 11, 30)),
+        make_appointment_service(appointment_id="apt_c_tomorrow", start=datetime(2026, 1, 2, 9, 0), end=datetime(2026, 1, 2, 9, 30)),
+    ])
+    await db_session.commit()
+
+    result = await list_todays_appointments(db_session)
+
+    assert result.reference_date == date(2026, 1, 1)
+    assert [item.service_name for item in result.items] == ["Consultation", "Facial"]  # sorted by start time
+    assert result.items[0].provider_name == "Dr Smith"
+    assert result.items[0].patient_name == "Alice Anderson"
+    assert {item.patient_id for item in result.items} == {"pat_a"}  # pat_b (cancelled) and pat_c (tomorrow) excluded
