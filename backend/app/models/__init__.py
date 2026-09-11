@@ -8,6 +8,7 @@ of reaching into individual model modules.
 from app.models.appointment import Appointment
 from app.models.appointment_service import AppointmentService
 from app.models.base import Base
+from app.models.custom_report import CustomReport
 from app.models.patient import Patient
 from app.models.payment import Payment
 from app.models.provider import Provider
@@ -21,4 +22,5 @@ __all__ = [
     "Appointment",
     "AppointmentService",
     "Payment",
+    "CustomReport",
 ]
