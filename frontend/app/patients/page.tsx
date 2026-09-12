@@ -51,7 +51,7 @@
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 import { CalendarView } from "@/components/patients/CalendarView";
 import { PatientFilters } from "@/components/patients/PatientFilters";
@@ -94,6 +94,21 @@ function PatientsPageContent() {
   // mounted back on "Today's Appointments" regardless of where the agent had navigated
   // from.
   const [tab, setTabState] = useState<TabKey>(isTabKey(tabParam) ? tabParam : "today");
+
+  // `useState`'s initializer above only runs once, at mount -- it does NOT re-run just
+  // because `tabParam` changes later. That's invisible for every navigation that lands on
+  // a *different* route (e.g. a patient detail page's "Back to Front Desk" link), since
+  // Next.js mounts `PatientsPageContent` fresh there. But the nav's own logo/name link
+  // (`href="/patients?tab=today"`, see `app/layout.tsx`) targets this SAME route with only
+  // the query string changed -- Next keeps this component instance mounted for that, so
+  // without this effect, clicking it from any non-"today" tab updated the URL (confirmed:
+  // the address bar did change) while the page kept showing whatever tab was already
+  // active. Syncing here whenever the URL's own tab disagrees with local state covers that
+  // case (and browser back/forward) without affecting `setTab` below, which already keeps
+  // both in agreement itself.
+  useEffect(() => {
+    if (isTabKey(tabParam) && tabParam !== tab) setTabState(tabParam);
+  }, [tabParam, tab]);
 
   const setTab = (key: TabKey) => {
     setTabState(key);
