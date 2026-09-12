@@ -146,7 +146,7 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
                   dataKey="period"
                   tickMargin={8}
                   tickFormatter={formatPeriodTick}
-                  interval={periodAxisInterval(rows.length)}
+                  interval={periodAxisInterval(rows.length, chartWidth)}
                 />
                 <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => formatValue(v as number)} />
                 <Tooltip

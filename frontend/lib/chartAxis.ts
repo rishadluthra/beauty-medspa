@@ -77,15 +77,40 @@ export function formatPeriodTick(period: string): string {
 }
 
 /**
- * Picks a Recharts `<XAxis interval>` value so a monthly period axis shows
- * at most `maxTicks` labels instead of one per data point -- a full year
- * of monthly points (12) all rendering their label produced the same
- * illegible overlap `formatPeriodTick` alone doesn't fix, since shortening
- * each label doesn't reduce how many are drawn. `interval` is "skip every
- * N ticks" (0 = show all), so this returns how many to skip to land under
- * the cap.
+ * The deliberate desktop-width decluttering target from the original
+ * fixed-`maxTicks` version of this function -- a full year of monthly
+ * ticks (12) all rendering is technically non-overlapping on a wide
+ * desktop chart, but still reads as busier than a clean ~7-tick axis.
+ * Kept as an upper bound even though tick count is now width-aware (see
+ * `periodAxisInterval`), so a wide chart still gets the same intentionally
+ * sparse look it always has -- only a chart too narrow to fit even this
+ * many gets pushed below it.
  */
-export function periodAxisInterval(pointCount: number, maxTicks = 7): number {
+const DEFAULT_MAX_TICKS = 7;
+
+/**
+ * Picks a Recharts `<XAxis interval>` value so a monthly period axis shows
+ * only as many labels as `chartWidth` can actually fit side by side (down
+ * to `DEFAULT_MAX_TICKS` on a wide chart) -- an earlier version hard-coded
+ * `maxTicks = 7` regardless of the chart's real rendered width, which
+ * looked fine on a desktop-width chart but overlapped into an illegible
+ * mess on a phone-width one (confirmed live: a ~350px-wide mobile chart
+ * tried to cram the same 7 "Mon 'YY" labels a ~900px desktop chart shows,
+ * at roughly half the pixels each). This is the exact "fixed guess instead
+ * of a real measurement" mistake `estimateAxisWidth`'s own comment already
+ * warns about, just on the x-axis's tick *count* rather than the y-axis's
+ * tick *width*. `tickWidthPx` is the same per-character estimation
+ * approach as `estimateAxisWidth` (8px/char), sized for a "Mon 'YY" label
+ * (7 characters, ~56px at 8px/char) plus real breathing room -- ticks are
+ * center-anchored, so spacing adjacent centers exactly one label-width
+ * apart (56px) only guarantees their edges don't overlap, not that they
+ * don't touch: confirmed live at 70px, mobile ticks read "Dec '24Mar '25"
+ * with zero gap between them, each label fully legible but butted up
+ * against its neighbor. 90px leaves a visible gap.
+ */
+export function periodAxisInterval(pointCount: number, chartWidth: number, tickWidthPx = 90): number {
+  const widthLimitedTicks = Math.max(2, Math.floor(chartWidth / tickWidthPx));
+  const maxTicks = Math.min(DEFAULT_MAX_TICKS, widthLimitedTicks);
   if (pointCount <= maxTicks) return 0;
   return Math.ceil(pointCount / maxTicks) - 1;
 }

@@ -8,6 +8,7 @@
  * charting/display.
  */
 
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -21,6 +22,25 @@ export function RevenueChart() {
     queryKey: ["analytics", "revenue-over-time"],
     queryFn: api.getRevenueOverTime,
   });
+
+  // Tracks the chart's actual rendered width (see `periodAxisInterval`) so the x-axis
+  // shows as many "Mon 'YY" ticks as will really fit -- a mobile-width chart needs far
+  // fewer than a desktop one, not a fixed count. Depends on `data`, not `[]`: this
+  // component returns early (a plain "Loading…" <p>, no ref'd div at all) while
+  // `isLoading` is true, so an empty-deps effect would run its one and only time
+  // against a `containerRef.current` that's still null -- the observer would never
+  // attach, and `chartWidth` would silently stay 0 forever (confirmed live: every
+  // render logged `chartWidth: 0`, forcing the narrowest possible tick count even on a
+  // full-width desktop chart). Re-running once `data` actually arrives -- the same
+  // render that finally includes the ref'd div -- lets the ref attach for real.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => setChartWidth(entries[0].contentRect.width));
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [data]);
 
   if (isLoading) return <p className="text-brand-bg/70">Loading revenue trend…</p>;
   if (!data || data.length === 0) return <p className="text-brand-bg/70">No revenue data yet.</p>;
@@ -39,34 +59,36 @@ export function RevenueChart() {
   return (
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 font-medium text-brand-dark">Revenue Over Time</h2>
-      <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis
-            dataKey="period"
-            tickMargin={8}
-            tickFormatter={formatPeriodTick}
-            interval={periodAxisInterval(chartData.length)}
-          />
-          {/*
-            `(v) => ... (v as number)` rather than `(v: number) => ...` is
-            deliberate, not a typo: Recharts' TS types for tickFormatter /
-            Tooltip's formatter accept a broader union (including
-            `undefined`), so a plain `number`-typed parameter fails to
-            compile against those types. Casting inside the function body
-            is the fix — safe here since this chart's own data is always
-            numeric.
+      <div ref={containerRef}>
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis
+              dataKey="period"
+              tickMargin={8}
+              tickFormatter={formatPeriodTick}
+              interval={periodAxisInterval(chartData.length, chartWidth)}
+            />
+            {/*
+              `(v) => ... (v as number)` rather than `(v: number) => ...` is
+              deliberate, not a typo: Recharts' TS types for tickFormatter /
+              Tooltip's formatter accept a broader union (including
+              `undefined`), so a plain `number`-typed parameter fails to
+              compile against those types. Casting inside the function body
+              is the fix — safe here since this chart's own data is always
+              numeric.
 
-            `width={yAxisWidth}` is computed from the real data (see
-            above), not a fixed guess -- a fixed 72px guess here still
-            clipped the "$" off "$600,000" in production once real revenue
-            data pushed past what that guess assumed.
-          */}
-          <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
-          <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
-          <Line type="monotone" dataKey="revenue" name="Revenue" stroke={BRAND.navyTeal} strokeWidth={2} dot={false} />
-        </LineChart>
-      </ResponsiveContainer>
+              `width={yAxisWidth}` is computed from the real data (see
+              above), not a fixed guess -- a fixed 72px guess here still
+              clipped the "$" off "$600,000" in production once real revenue
+              data pushed past what that guess assumed.
+            */}
+            <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => `$${(v as number).toLocaleString()}`} />
+            <Tooltip formatter={(v) => `$${(v as number).toLocaleString()}`} />
+            <Line type="monotone" dataKey="revenue" name="Revenue" stroke={BRAND.navyTeal} strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
