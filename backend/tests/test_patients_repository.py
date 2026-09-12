@@ -526,9 +526,12 @@ async def test_get_patient_detail_rebooking_context_scopes_previous_next_to_rebo
     ])
     await db_session.flush()
     db_session.add_all([
-        make_appointment_service(appointment_id="apt_a", start=datetime(2025, 11, 20, 9, 0), end=datetime(2025, 11, 20, 9, 30)),
-        make_appointment_service(appointment_id="apt_g", start=datetime(2025, 11, 10, 9, 0), end=datetime(2025, 11, 10, 9, 30)),
-        make_appointment_service(appointment_id="apt_b", start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30)),
+        # All three visits pushed past the 45-day staleness floor (REBOOKING_STALE_DAYS)
+        # relative to the Jan 1 2026 reference date -- Nov 20/10/1 would each have been
+        # too recent to qualify at all once that floor was added.
+        make_appointment_service(appointment_id="apt_a", start=datetime(2025, 11, 10, 9, 0), end=datetime(2025, 11, 10, 9, 30)),
+        make_appointment_service(appointment_id="apt_g", start=datetime(2025, 10, 25, 9, 0), end=datetime(2025, 10, 25, 9, 30)),
+        make_appointment_service(appointment_id="apt_b", start=datetime(2025, 10, 1, 9, 0), end=datetime(2025, 10, 1, 9, 30)),
         make_appointment_service(appointment_id="apt_month_jan", start=datetime(2026, 1, 5, 10, 0), end=datetime(2026, 1, 5, 10, 30)),
         make_appointment_service(appointment_id="apt_month_feb", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
     ])
@@ -538,8 +541,8 @@ async def test_get_patient_detail_rebooking_context_scopes_previous_next_to_rebo
     # alphabetically despite having the most recent visit), so a correct rebooking-order
     # result here proves it isn't silently falling back to the global name-sorted order.
     detail = await get_patient_detail(db_session, "pat_g", context=PatientListContext(kind="rebooking"))
-    assert detail.previous_patient_id == "pat_a"  # more recent visit (Nov 20) sorts before
-    assert detail.next_patient_id == "pat_b"  # older visit (Nov 1) sorts after
+    assert detail.previous_patient_id == "pat_a"  # more recent visit (Nov 10) sorts before
+    assert detail.next_patient_id == "pat_b"  # older visit (Oct 1) sorts after
 
     first = await get_patient_detail(db_session, "pat_a", context=PatientListContext(kind="rebooking"))
     assert first.previous_patient_id is None
@@ -1143,9 +1146,10 @@ async def test_list_rebooking_opportunities_selects_past_only_patients_sorted_mo
     """Covers the Rebooking Opportunities contract in one seeded scenario, anchored to
     reference_date = 2026-01-01 (set by the Feb 2026 appointment below):
 
-    - pat_a and pat_b both have only past (non-cancelled) appointments and nothing
-      scheduled today or later -- both qualify, sorted by last visit, most recent first
-      (pat_a's Dec 20 visit before pat_b's Dec 1 visit).
+    - pat_a and pat_b both have only past (non-cancelled) appointments, nothing scheduled
+      today or later, and their last visit clears the `REBOOKING_STALE_DAYS` floor -- both
+      qualify, sorted by last visit, most recent first (pat_a's Nov 10 visit before pat_b's
+      Oct 1 visit).
     - pat_c has an appointment scheduled exactly on the reference date (today) -- excluded
       entirely, since "today" counts as already having something on the books.
     - pat_d has an appointment further in the future -- excluded, same reasoning.
@@ -1171,11 +1175,11 @@ async def test_list_rebooking_opportunities_selects_past_only_patients_sorted_mo
     ])
     await db_session.flush()
     db_session.add_all([
-        make_appointment_service(appointment_id="apt_a", start=datetime(2025, 12, 20, 9, 0), end=datetime(2025, 12, 20, 9, 30)),
-        make_appointment_service(appointment_id="apt_b", start=datetime(2025, 12, 1, 9, 0), end=datetime(2025, 12, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_a", start=datetime(2025, 11, 10, 9, 0), end=datetime(2025, 11, 10, 9, 30)),
+        make_appointment_service(appointment_id="apt_b", start=datetime(2025, 10, 1, 9, 0), end=datetime(2025, 10, 1, 9, 30)),
         make_appointment_service(appointment_id="apt_c_today", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)),
         make_appointment_service(appointment_id="apt_d_future", start=datetime(2026, 1, 15, 9, 0), end=datetime(2026, 1, 15, 9, 30)),
-        make_appointment_service(appointment_id="apt_e_cancelled", start=datetime(2025, 12, 10, 9, 0), end=datetime(2025, 12, 10, 9, 30)),
+        make_appointment_service(appointment_id="apt_e_cancelled", start=datetime(2025, 11, 5, 9, 0), end=datetime(2025, 11, 5, 9, 30)),
         make_appointment_service(appointment_id="apt_latest", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
     ])
     await db_session.commit()
@@ -1184,9 +1188,53 @@ async def test_list_rebooking_opportunities_selects_past_only_patients_sorted_mo
 
     assert result.reference_date == date(2026, 1, 1)
     assert [item.id for item in result.items] == ["pat_a", "pat_b"]  # most recent visit first
-    assert result.items[0].last_appointment_date == datetime(2025, 12, 20, 9, 0)
+    assert result.items[0].last_appointment_date == datetime(2025, 11, 10, 9, 0)
     assert result.items[0].last_service_name == "Consultation"  # make_service()'s default name
     assert result.items[0].last_provider_name == "Dr Smith"  # make_provider()'s default name
+
+
+async def test_list_rebooking_opportunities_enforces_the_stale_days_floor(db_session):
+    """A patient with nothing scheduled going forward but who was JUST seen doesn't belong
+    on an outreach worklist -- they haven't lapsed, they just haven't rebooked yet, which is
+    completely normal (confirmed live against the real dataset: without this floor, 54% of
+    all 4,000 patients qualified, most of them seen within the last few days). Anchored to
+    reference_date = 2026-01-01, so the `REBOOKING_STALE_DAYS` (45) cutoff date is
+    2025-11-17:
+
+    - pat_recent's last visit (Dec 1, well under 45 days before the reference date)
+      excludes them even though they have no upcoming appointment either.
+    - pat_boundary's last visit lands on the cutoff date ITSELF, at a real business-hours
+      time (not midnight) -- still included, proving the comparison is whole-day (via
+      `func.date(...)`), not a raw datetime `<=` that would wrongly demand a 46th day for
+      any appointment that didn't happen to start at exactly midnight.
+    - pat_too_recent's last visit is one day short of the cutoff -- excluded.
+    """
+    db_session.add_all([
+        make_patient(id="pat_recent", first_name="Rita", last_name="Recent"),
+        make_patient(id="pat_boundary", first_name="Bea", last_name="Boundary"),
+        make_patient(id="pat_too_recent", first_name="Tara", last_name="TooRecent"),
+        make_patient(id="pat_anchor", first_name="Anna", last_name="Anchor"),  # sets the latest data months only
+        make_provider(), make_service(),
+        make_appointment(id="apt_recent", patient_id="pat_recent", status="confirmed"),
+        make_appointment(id="apt_boundary", patient_id="pat_boundary", status="confirmed"),
+        make_appointment(id="apt_too_recent", patient_id="pat_too_recent", status="confirmed"),
+        make_appointment(id="apt_month_jan", patient_id="pat_anchor", status="confirmed"),
+        make_appointment(id="apt_month_feb", patient_id="pat_anchor", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_recent", start=datetime(2025, 12, 1, 9, 0), end=datetime(2025, 12, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_boundary", start=datetime(2025, 11, 17, 14, 0), end=datetime(2025, 11, 17, 14, 30)),
+        make_appointment_service(appointment_id="apt_too_recent", start=datetime(2025, 11, 18, 9, 0), end=datetime(2025, 11, 18, 9, 30)),
+        make_appointment_service(appointment_id="apt_month_jan", start=datetime(2026, 1, 5, 10, 0), end=datetime(2026, 1, 5, 10, 30)),
+        make_appointment_service(appointment_id="apt_month_feb", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    result = await list_rebooking_opportunities(db_session)
+
+    assert result.reference_date == date(2026, 1, 1)
+    assert [item.id for item in result.items] == ["pat_boundary"]  # only the one that's stale enough
 
 
 async def test_list_rebooking_opportunities_sort_and_sort_dir_support_every_column(db_session):
@@ -1213,8 +1261,11 @@ async def test_list_rebooking_opportunities_sort_and_sort_dir_support_every_colu
     ])
     await db_session.flush()
     db_session.add_all([
-        make_appointment_service(appointment_id="apt_a", start=datetime(2025, 12, 20, 9, 0), end=datetime(2025, 12, 20, 9, 30)),
-        make_appointment_service(appointment_id="apt_b", start=datetime(2025, 12, 1, 9, 0), end=datetime(2025, 12, 1, 9, 30)),
+        # Both visits pushed past the 45-day staleness floor (REBOOKING_STALE_DAYS)
+        # relative to the Jan 1 2026 reference date -- Dec 20/Dec 1 would each have been
+        # too recent to qualify at all once that floor was added.
+        make_appointment_service(appointment_id="apt_a", start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_b", start=datetime(2025, 10, 1, 9, 0), end=datetime(2025, 10, 1, 9, 30)),
         make_appointment_service(appointment_id="apt_month_jan", start=datetime(2026, 1, 5, 10, 0), end=datetime(2026, 1, 5, 10, 30)),
         make_appointment_service(appointment_id="apt_month_feb", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
     ])
@@ -1257,13 +1308,16 @@ async def test_list_rebooking_opportunities_last_service_and_provider_come_from_
     ])
     await db_session.flush()
     db_session.add_all([
+        # Pushed past the 45-day staleness floor (REBOOKING_STALE_DAYS) relative to the
+        # Jan 1 2026 reference date -- Dec 20 would have been too recent to qualify at all
+        # once that floor was added.
         make_appointment_service(
             appointment_id="apt_multi", service_id="svc_1", provider_id="prv_1",
-            start=datetime(2025, 12, 20, 9, 0), end=datetime(2025, 12, 20, 9, 30),
+            start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30),
         ),
         make_appointment_service(
             appointment_id="apt_multi", service_id="svc_2", provider_id="prv_2",
-            start=datetime(2025, 12, 20, 10, 0), end=datetime(2025, 12, 20, 10, 30),
+            start=datetime(2025, 11, 1, 10, 0), end=datetime(2025, 11, 1, 10, 30),
         ),
         make_appointment_service(appointment_id="apt_month_jan", start=datetime(2026, 1, 5, 10, 0), end=datetime(2026, 1, 5, 10, 30)),
         make_appointment_service(appointment_id="apt_month_feb", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
@@ -1273,6 +1327,6 @@ async def test_list_rebooking_opportunities_last_service_and_provider_come_from_
     result = await list_rebooking_opportunities(db_session)
 
     by_id = {item.id: item for item in result.items}
-    assert by_id["pat_a"].last_appointment_date == datetime(2025, 12, 20, 10, 0)  # the LATER of the two services
+    assert by_id["pat_a"].last_appointment_date == datetime(2025, 11, 1, 10, 0)  # the LATER of the two services
     assert by_id["pat_a"].last_service_name == "X-Ray"  # not "Consultation" (the earlier one)
     assert by_id["pat_a"].last_provider_name == "Bob Late"  # not "Ann Early"

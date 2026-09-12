@@ -1003,6 +1003,9 @@ async def list_upcoming_appointments(
     )
 
 
+REBOOKING_STALE_DAYS = 45  # see list_rebooking_opportunities for why this exists at all
+
+
 def _rebooking_subqueries(reference_now: datetime):
     """The `(has_upcoming, last_visit)` subqueries shared by `list_rebooking_opportunities`
     and `_neighbors_in_rebooking`, so Prev/Next on that worklist can never disagree with
@@ -1072,16 +1075,28 @@ async def list_rebooking_opportunities(
     db: AsyncSession, page: int = 1, page_size: int = 25,
     sort: str = "last_appointment_date", sort_dir: str = "desc",
 ) -> RebookingOpportunitiesResponse:
-    """List patients who have been seen before but have nothing scheduled going forward --
-    the front desk's outreach/rebooking worklist, not just a demographic filter.
+    """List patients who have genuinely gone quiet -- seen before, nothing scheduled going
+    forward, AND not seen recently either -- the front desk's outreach/rebooking worklist,
+    not just a demographic filter.
 
-    A patient qualifies if they have at least one non-cancelled appointment AND none of
-    their non-cancelled appointments start on or after the reference "today" (see
-    `get_reference_now`) -- i.e. nothing scheduled today, and nothing upcoming either.
-    Sorted by their most recent visit, most-recent-first: a patient seen last week is a far
-    more promising rebooking call than one seen a year ago, and this ordering surfaces the
-    best candidates first without an arbitrary "seen within N days" cutoff that would
-    silently hide someone worth calling.
+    A patient qualifies if they have at least one non-cancelled appointment, none of their
+    non-cancelled appointments start on or after the reference "today" (see
+    `get_reference_now`) -- i.e. nothing scheduled today, nothing upcoming either -- AND
+    their most recent visit was at least `REBOOKING_STALE_DAYS` days before "today".
+
+    That last condition was NOT here originally -- an earlier version deliberately left it
+    out, reasoning that any cutoff risked "silently hiding someone worth calling." Live
+    verification against this exact dataset showed the actual cost of that choice: 2,164 of
+    4,000 patients (54%) qualified, with the very top of the "most promising" list being
+    people last seen literally days before the reference date -- someone who visited last
+    week hasn't lapsed, they just haven't rebooked yet, which is completely normal and not
+    actionable outreach. A worklist that's already half the entire patient base, paginated
+    dozens of pages deep, isn't a worklist a front desk agent will actually work through --
+    reported directly as "doesn't seem very useful." The staleness floor is what turns this
+    from "everyone without a future booking" into "people who have actually gone quiet."
+
+    Sorted by their most recent visit, most-recent-first even with the floor in place: a
+    patient stale for 46 days is still a more promising call than one stale for a year.
 
     Patients with ANY non-cancelled appointment starting today or later already have
     something on the books and don't belong on this list -- excluded via an anti-join
@@ -1094,6 +1109,12 @@ async def list_rebooking_opportunities(
     """
     reference_now = await get_reference_now(db)
     has_upcoming, last_visit = _rebooking_subqueries(reference_now)
+    # Whole-day comparison (`func.date(...)`, the same tool `get_calendar_month` already
+    # uses for this), not a raw datetime `<=` -- `reference_now` is always midnight, so a
+    # naive datetime comparison against a real appointment's actual time-of-day (e.g. 9am)
+    # would wrongly require 46 days instead of 45 for any visit that didn't happen to land
+    # exactly at midnight on the cutoff day itself.
+    stale_cutoff_date = reference_now.date() - timedelta(days=REBOOKING_STALE_DAYS)
 
     query = (
         select(
@@ -1102,7 +1123,7 @@ async def list_rebooking_opportunities(
         )
         .join(last_visit, last_visit.c.patient_id == Patient.id)
         .outerjoin(has_upcoming, has_upcoming.c.patient_id == Patient.id)
-        .where(has_upcoming.c.patient_id.is_(None))
+        .where(has_upcoming.c.patient_id.is_(None), func.date(last_visit.c.start) <= stale_cutoff_date)
         .order_by(*_rebooking_sort_expressions(sort, sort_dir, last_visit))
     )
 
@@ -1131,15 +1152,17 @@ async def _neighbors_in_rebooking(
     the patient immediately before/after `patient_id` in the same `(sort, sort_dir)`
     order `list_rebooking_opportunities` displays (most-recent-visit-first by default).
     Returns `(None, None)` if `patient_id` no longer qualifies for the worklist at all
-    (e.g. they've since been rebooked).
+    (e.g. they've since been rebooked, or their last visit isn't stale enough yet --
+    see `REBOOKING_STALE_DAYS`).
     """
     reference_now = await get_reference_now(db)
     has_upcoming, last_visit = _rebooking_subqueries(reference_now)
+    stale_cutoff_date = reference_now.date() - timedelta(days=REBOOKING_STALE_DAYS)
     base = (
         select(Patient.id)
         .join(last_visit, last_visit.c.patient_id == Patient.id)
         .outerjoin(has_upcoming, has_upcoming.c.patient_id == Patient.id)
-        .where(has_upcoming.c.patient_id.is_(None))
+        .where(has_upcoming.c.patient_id.is_(None), func.date(last_visit.c.start) <= stale_cutoff_date)
     )
     ranked = base.add_columns(
         func.row_number().over(order_by=_rebooking_sort_expressions(sort, sort_dir, last_visit)).label("rn")

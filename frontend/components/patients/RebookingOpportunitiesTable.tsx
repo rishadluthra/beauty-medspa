@@ -2,11 +2,12 @@
 
 /**
  * Rebooking Opportunities — the front desk's outreach worklist: patients who have
- * been seen before but have nothing scheduled going forward. Unlike every
- * other view on this page (all about *existing* appointments), this is
- * actionable in the opposite direction -- these are the people worth
- * calling to get back on the books. Defaults to most-recently-seen first (see
- * the backend's `list_rebooking_opportunities` for why), so the most promising
+ * genuinely gone quiet (seen before, nothing scheduled going forward, AND not
+ * seen recently either -- see the backend's `list_rebooking_opportunities`
+ * for the staleness floor and why it exists). Unlike every other view on
+ * this page (all about *existing* appointments), this is actionable in the
+ * opposite direction -- these are the people worth calling to get back on
+ * the books. Defaults to most-recently-seen first, so the most promising
  * calls are at the top rather than buried under years-stale leads -- every
  * column except Phone is click-to-sort, the same as every other table in this app.
  */
@@ -53,7 +54,7 @@ export function RebookingOpportunitiesTable() {
     <div className="space-y-4">
       {data && (
         <p className="text-sm text-brand-bg/70">
-          {data.total} patient{data.total === 1 ? "" : "s"} seen before with nothing scheduled as of {formatDate(data.reference_date)}
+          {data.total} patient{data.total === 1 ? "" : "s"} with no visit in 45+ days and nothing scheduled, as of {formatDate(data.reference_date)}
         </p>
       )}
 
