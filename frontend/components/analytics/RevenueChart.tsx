@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
-import { estimateAxisWidth } from "@/lib/chartAxis";
+import { estimateAxisWidth, formatPeriodTick, periodAxisInterval } from "@/lib/chartAxis";
 import { BRAND } from "@/lib/chartColors";
 
 /** Fetches and renders revenue-over-time as a line chart, in dollars. */
@@ -42,7 +42,12 @@ export function RevenueChart() {
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="period" tickMargin={8} />
+          <XAxis
+            dataKey="period"
+            tickMargin={8}
+            tickFormatter={formatPeriodTick}
+            interval={periodAxisInterval(chartData.length)}
+          />
           {/*
             `(v) => ... (v as number)` rather than `(v: number) => ...` is
             deliberate, not a typo: Recharts' TS types for tickFormatter /

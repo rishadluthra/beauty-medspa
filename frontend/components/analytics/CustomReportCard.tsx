@@ -23,7 +23,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { estimateAxisWidth } from "@/lib/chartAxis";
+import { estimateAxisWidth, formatPeriodTick, periodAxisInterval } from "@/lib/chartAxis";
 import { CATEGORICAL_PALETTE } from "@/lib/chartColors";
 import { formatLabel } from "@/lib/format";
 import type { CustomReport } from "@/lib/types";
@@ -142,7 +142,12 @@ export function CustomReportCard({ report }: { report: CustomReport }) {
                 onMouseLeave={() => setHoverX(null)}
               >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="period" tickMargin={8} />
+                <XAxis
+                  dataKey="period"
+                  tickMargin={8}
+                  tickFormatter={formatPeriodTick}
+                  interval={periodAxisInterval(rows.length)}
+                />
                 <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={(v) => formatValue(v as number)} />
                 <Tooltip
                   content={<GlassTooltip formatValue={formatValue} />}

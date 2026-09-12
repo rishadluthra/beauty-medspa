@@ -45,3 +45,47 @@ export function estimateAxisWidth(labels: string[], charWidthPx = 8, paddingPx =
  * off-canvas clip again.
  */
 export const LEFT_ALIGNED_CATEGORY_TICK = { textAnchor: "start" as const, x: 4 };
+
+const MONTH_ABBREVIATIONS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/**
+ * Formats a "YYYY-MM" period key (the shape every analytics time-series
+ * endpoint returns, e.g. RevenuePoint.period) as a short tick label like
+ * "Dec '24" -- Recharts' default of rendering the raw "2024-12" string for
+ * every point produced an unreadable wall of 10-character labels across a
+ * full year of months (confirmed in production: 12 ticks reading
+ * "2024-12" through "2025-11" overlapping into an illegible strip).
+ */
+export function formatPeriodTick(period: string): string {
+  const [year, month] = period.split("-");
+  const monthIndex = Number(month) - 1;
+  const abbrev = MONTH_ABBREVIATIONS[monthIndex] ?? month;
+  return `${abbrev} '${year.slice(2)}`;
+}
+
+/**
+ * Picks a Recharts `<XAxis interval>` value so a monthly period axis shows
+ * at most `maxTicks` labels instead of one per data point -- a full year
+ * of monthly points (12) all rendering their label produced the same
+ * illegible overlap `formatPeriodTick` alone doesn't fix, since shortening
+ * each label doesn't reduce how many are drawn. `interval` is "skip every
+ * N ticks" (0 = show all), so this returns how many to skip to land under
+ * the cap.
+ */
+export function periodAxisInterval(pointCount: number, maxTicks = 7): number {
+  if (pointCount <= maxTicks) return 0;
+  return Math.ceil(pointCount / maxTicks) - 1;
+}
