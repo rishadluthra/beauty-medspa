@@ -216,11 +216,23 @@ export function PatientFilters({ filters, onChange }: Props) {
 
           <div>
             <span className="mb-1 block text-xs font-medium text-brand-dark/60">Joined</span>
+            {/*
+              `min-w-0` on both inputs below -- a native <input type="date">
+              has a wide, non-shrinkable intrinsic content width (the
+              "yyyy-mm-dd" text plus its built-in calendar-icon button), and
+              flex items default to `min-width: auto`, which refuses to
+              shrink a child below its own intrinsic width even when the
+              flex row doesn't have room for it. With two of these side by
+              side plus a dash, that pushed the second input past the
+              card's own right edge -- confirmed via a real screenshot.
+              `min-w-0` overrides that default, letting `w-full` actually
+              shrink both inputs to fit.
+            */}
             <div className="flex items-center gap-2">
               <input
                 type="date"
                 aria-label="Joined from"
-                className={`w-full ${FILTER_FIELD_CLASSNAME}`}
+                className={`w-full min-w-0 ${FILTER_FIELD_CLASSNAME}`}
                 value={filters.created_from ?? ""}
                 onChange={(e) => onChange({ created_from: e.target.value || undefined })}
               />
@@ -228,7 +240,7 @@ export function PatientFilters({ filters, onChange }: Props) {
               <input
                 type="date"
                 aria-label="Joined to"
-                className={`w-full ${FILTER_FIELD_CLASSNAME}`}
+                className={`w-full min-w-0 ${FILTER_FIELD_CLASSNAME}`}
                 value={filters.created_to ?? ""}
                 onChange={(e) => onChange({ created_to: e.target.value || undefined })}
               />
