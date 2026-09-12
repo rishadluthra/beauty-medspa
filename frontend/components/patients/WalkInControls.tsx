@@ -1,20 +1,17 @@
 "use client";
 
 /**
- * Walk-In Availability's own service/time picker, rendered by `PatientsPage` in the
- * shared tab row (right-aligned, next to the tab selector) -- exactly where
- * `ScheduleFilters`/`PatientFilters` sit for the other tabs. Previously these two
- * fields lived inside `WalkInAvailability` itself, wrapped in a bordered/shadowed card
- * that pushed the whole results list down a row; the rest of the app never puts a
- * tab's controls in their own row below the tabs (see `PatientsPage`'s top-of-file
- * comment), so that card read as a one-off that didn't belong.
- *
- * Deliberately NOT styled as a `FILTER_PILL_CLASSNAME` toggle-button-plus-dropdown like
- * `ScheduleFilters`/`PatientFilters`: those hide *optional* narrowing behind a click
- * because the table underneath is already meaningful with nothing selected. Here,
- * service + time aren't narrowing anything -- they're the required inputs the whole
- * view depends on to show any result at all, so they stay directly visible in the row
- * rather than hidden behind a "Filters" click.
+ * Walk-In Availability's own service/time picker, rendered by `PatientsPage` in its
+ * own centered row below the tabs (not the shared right-aligned tab-row filter slot
+ * `ScheduleFilters`/`PatientFilters` use) -- a deliberate, direct exception to that
+ * convention: service + time aren't narrowing anything the way a filter does, they're
+ * the required inputs the whole view depends on to show any result at all, and a
+ * front-desk agent should be able to see/change them without hunting for a small
+ * right-aligned control. Previously these fields lived inside `WalkInAvailability`
+ * itself in a flat opaque cream card that read as visually out of place; the current
+ * frosted-glass treatment (translucent fill + blur, on the dark page background) and
+ * centered placement is a direct, explicit design request, not a re-derivation of the
+ * app's general tab-row-filter convention.
  *
  * Owns the "default to the first service once the list loads" effect itself (rather
  * than `WalkInAvailability`, which no longer needs the services list at all now that
@@ -29,9 +26,9 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatCents } from "@/lib/format";
 
-/** Compact select/date/time styling for the dark page background this row sits on -- a lighter-weight cousin of `FILTER_PILL_CLASSNAME` (no button chrome needed for native form fields). */
+/** Field styling for inside the frosted-glass panel -- a slightly-lighter fill than the panel itself so each field still reads as its own control against the blur, not just floating text. */
 const TOOLBAR_FIELD_CLASSNAME =
-  "rounded-full border border-brand-bg/20 bg-transparent px-3 py-1.5 text-sm text-brand-bg outline-none transition-colors [color-scheme:dark] hover:border-brand-gold focus:ring-2 focus:ring-brand-gold/50";
+  "rounded-full border border-brand-bg/25 bg-brand-bg/10 px-3 py-1.5 text-sm text-brand-bg outline-none transition-colors [color-scheme:dark] hover:border-brand-gold focus:ring-2 focus:ring-brand-gold/50";
 
 interface Props {
   serviceId: string | undefined;
@@ -55,7 +52,7 @@ export function WalkInControls({ serviceId, at, onServiceIdChange, onAtChange }:
   }, [services, serviceId, onServiceIdChange]);
 
   return (
-    <div className="ml-auto flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-brand-bg/15 bg-brand-bg/10 px-5 py-3 shadow-lg shadow-black/10 backdrop-blur-xl">
       <select
         aria-label="Service"
         className={TOOLBAR_FIELD_CLASSNAME}

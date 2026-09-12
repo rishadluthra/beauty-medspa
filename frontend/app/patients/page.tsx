@@ -52,12 +52,12 @@
  * currently showing its Day View -- filtering only makes sense once a
  * specific day's schedule is on screen, not the month grid itself.
  *
- * `walkinServiceId`/`walkinAt` (Walk-In Availability) live here for the same
- * reason, even though they're required inputs rather than optional filters --
- * `WalkInControls` (the picker, rendered in this row) and `WalkInAvailability`
- * (the results, rendered below) both need the same values, and the tab row is
- * where every other tab's own controls already live rather than a one-off row
- * of their own.
+ * `walkinServiceId`/`walkinAt` (Walk-In Availability) are lifted here too, for the
+ * same "picker and results share one source of truth" reason -- but `WalkInControls`
+ * itself is a deliberate, direct-request EXCEPTION to the tab-row convention above:
+ * it renders centered in its own row in the content area (see that component's
+ * docstring), not the shared right-aligned tab-row slot, because it's a required
+ * input rather than an optional filter.
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
@@ -191,14 +191,6 @@ function PatientsPageContent() {
             onChange={(next) => setRebookingFilters((prev) => ({ ...prev, ...next }))}
           />
         )}
-        {tab === "walkin" && (
-          <WalkInControls
-            serviceId={walkinServiceId}
-            at={walkinAt}
-            onServiceIdChange={setWalkinServiceId}
-            onAtChange={setWalkinAt}
-          />
-        )}
       </div>
 
       {tab === "today" && (
@@ -216,7 +208,17 @@ function PatientsPageContent() {
         />
       )}
       {tab === "walkin" && (
-        <WalkInAvailability serviceId={walkinServiceId} at={walkinAt} onAtChange={setWalkinAt} />
+        <>
+          <div className="flex justify-center">
+            <WalkInControls
+              serviceId={walkinServiceId}
+              at={walkinAt}
+              onServiceIdChange={setWalkinServiceId}
+              onAtChange={setWalkinAt}
+            />
+          </div>
+          <WalkInAvailability serviceId={walkinServiceId} at={walkinAt} onAtChange={setWalkinAt} />
+        </>
       )}
       {tab === "all" && (
         <PatientTable
