@@ -25,6 +25,7 @@
  * (Age, Gender, Appointments) that dropdown never could.
  */
 
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
@@ -44,11 +45,12 @@ interface Props {
  * Renders the patient list as a server-paginated table.
  *
  * Important: this is fully server-side pagination/filtering/sorting, not a
- * client-side slice of a bulk-fetched array. `filters` is the single source
- * of truth for what to display; it's passed as the TanStack Query
- * `queryKey`, so any change to it (search text, filter conditions, sort,
- * page number) is treated as a new query and triggers a fresh API call.
- * The full ~4,000-patient set is never loaded into the browser at once.
+ * client-side slice of a bulk-fetched array. `apiFilters` (below) -- not the
+ * raw `filters` prop -- is the TanStack Query `queryKey`, so any change to
+ * what's actually SENT to the API (search text, a completed filter
+ * condition, sort, page number) is treated as a new query and triggers a
+ * fresh call. The full ~4,000-patient set is never loaded into the browser
+ * at once.
  */
 export function PatientTable({ filters, onFiltersChange }: Props) {
   const router = useRouter();
@@ -56,13 +58,30 @@ export function PatientTable({ filters, onFiltersChange }: Props) {
   const sortDir = filters.sort_dir ?? "asc";
 
   // Only COMPLETE filter conditions (a value already entered) are sent to the API -- a
-  // row still being edited in `PatientFilters` (column picked, no value yet) stays local
-  // UI state there and simply isn't queried on until it's finished. See
-  // `isCompleteFilterCondition`.
-  const apiFilters: PatientQueryParams = { ...filters, filters: (filters.filters ?? []).filter(isCompleteFilterCondition) };
+  // row still being edited in `PatientFilters` (column picked, no value yet, or an
+  // operator picked but no value yet) stays local UI state there and simply isn't
+  // queried on until it's finished. See `isCompleteFilterCondition`.
+  const completeConditions = (filters.filters ?? []).filter(isCompleteFilterCondition);
+  const apiFilters: PatientQueryParams = { ...filters, filters: completeConditions };
+
+  // Resetting to page 1 whenever the APPLIED (complete) filters/search change -- not on
+  // every keystroke of `filters` itself, which also changes the instant a new, still-
+  // empty filter row is added or its column/operator is picked before a value exists.
+  // Reacting to raw `filters` here (or, before this, unconditionally forcing `page: 1`
+  // in the parent's onChange -- see `app/patients/page.tsx`) was a real reported bug:
+  // it fed straight into `queryKey` below, so the table visibly refetched/flashed the
+  // instant "+ Add Filter" was clicked, before any actual filter value existed.
+  const appliedSignature = JSON.stringify({ filters: completeConditions, search: filters.search });
+  const previousAppliedSignature = useRef(appliedSignature);
+  useEffect(() => {
+    if (previousAppliedSignature.current !== appliedSignature) {
+      previousAppliedSignature.current = appliedSignature;
+      onFiltersChange({ page: 1 });
+    }
+  }, [appliedSignature, onFiltersChange]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patients", filters],
+    queryKey: ["patients", apiFilters],
     queryFn: () => api.getPatients(apiFilters),
   });
 

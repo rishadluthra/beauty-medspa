@@ -141,7 +141,7 @@ function PatientsPageContent() {
         {tab === "all" && (
           <PatientFilters
             filters={patientFilters}
-            onChange={(next) => setPatientFilters((prev) => ({ ...prev, ...next, page: 1 }))}
+            onChange={(next) => setPatientFilters((prev) => ({ ...prev, ...next }))}
           />
         )}
       </div>

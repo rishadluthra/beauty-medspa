@@ -96,7 +96,7 @@ function ValueEditor({ condition, onChange }: { condition: PatientFilterConditio
 
   if (column.type === "enum") {
     return (
-      <select className={`w-full ${FILTER_FIELD_CLASSNAME}`} value={condition.value ?? ""} onChange={(e) => onChange({ value: e.target.value || undefined })}>
+      <select aria-label={`${column.label} value`} className={`w-full ${FILTER_FIELD_CLASSNAME}`} value={condition.value ?? ""} onChange={(e) => onChange({ value: e.target.value || undefined })}>
         <option value="">Select…</option>
         {column.enumOptions?.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
