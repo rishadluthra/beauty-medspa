@@ -815,7 +815,7 @@ async def list_schedule_for_date(
     )
 
 
-CALENDAR_DAY_PREVIEW_LIMIT = 3
+CALENDAR_DAY_PREVIEW_LIMIT = 2  # kept small -- the month grid needs to stay compact (Apple-Calendar-style), not grow a row per extra chip
 
 
 async def get_calendar_month(

@@ -967,10 +967,10 @@ async def test_get_calendar_month_returns_every_day_with_correct_counts(db_sessi
 async def test_get_calendar_month_previews_are_capped_ordered_and_exclude_cancelled(db_session):
     """Covers the month grid's per-day chip preview list:
 
-    - A day with more scheduled services than `CALENDAR_DAY_PREVIEW_LIMIT` (3) still
-      reports its true `count`, but `appointments` is capped at 3 -- the frontend renders
+    - A day with more scheduled services than `CALENDAR_DAY_PREVIEW_LIMIT` (2) still
+      reports its true `count`, but `appointments` is capped at 2 -- the frontend renders
       "+N more" from the difference.
-    - The capped list keeps the *earliest* services chronologically, not an arbitrary 3.
+    - The capped list keeps the *earliest* services chronologically, not an arbitrary 2.
     - A cancelled appointment never appears in the preview, matching `count`'s own
       "exclude cancelled" semantics -- so a day's chips and its count never disagree.
     """
@@ -999,10 +999,10 @@ async def test_get_calendar_month_previews_are_capped_ordered_and_exclude_cancel
     result = await get_calendar_month(db_session, year=2026, month=1)
 
     day5 = next(day for day in result.days if day.date == date(2026, 1, 5))
-    assert day5.count == 4  # true total, including the one beyond the preview cap
-    assert [p.patient_name for p in day5.appointments] == ["Ann Adams", "Bea Brooks", "Cid Cole"]  # earliest 3, chronological
-    assert len(day5.appointments) == 3  # capped even though 4 non-cancelled services exist
-    assert all(p.patient_name != "Dee Diaz" for p in day5.appointments)  # the 4th (16:00) isn't in the top 3
+    assert day5.count == 4  # true total, including the ones beyond the preview cap
+    assert [p.patient_name for p in day5.appointments] == ["Ann Adams", "Bea Brooks"]  # earliest 2, chronological
+    assert len(day5.appointments) == 2  # capped even though 4 non-cancelled services exist
+    assert all(p.patient_name not in ("Cid Cole", "Dee Diaz") for p in day5.appointments)  # the 14:00/16:00 ones aren't in the top 2
     assert all(p.status == "confirmed" for p in day5.appointments)  # cancelled apt_5 never appears
 
 

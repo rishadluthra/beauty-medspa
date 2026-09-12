@@ -46,10 +46,11 @@ interface Props {
   onClearFilters: () => void;
 }
 
+/** Fixed width (fits "Confirmed"/"Cancelled", the longest status labels) so every badge reads as the same size regardless of its own label's length -- an inline-block badge sized purely to its text made "Pending" visibly smaller than "Confirmed" in the same column. */
 function StatusBadge({ status }: { status: string }) {
   return (
     <span
-      className="inline-block rounded-full px-2.5 py-1 text-xs font-medium text-white"
+      className="inline-block w-24 rounded-full px-2.5 py-1 text-center text-xs font-medium text-white"
       style={{ backgroundColor: APPOINTMENT_STATUS_COLORS[status] ?? "#64748b" }}
     >
       {formatLabel(status)}

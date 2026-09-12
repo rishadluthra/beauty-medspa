@@ -1,14 +1,26 @@
 "use client";
 
 /**
- * Calendar view — a Google-Calendar-style month grid: each day is both a
- * density heatmap (how busy that day is, by background intensity) and a
- * truncated preview of its earliest appointments (patient + time, dot-
- * colored by status), so a front desk agent can spot a heavy day and see
- * roughly who's on it before drilling in. Clicking a day switches the whole
+ * Calendar view — a compact, Apple-Calendar-style month grid: each day is
+ * both a density heatmap (how busy that day is, by background intensity)
+ * and a truncated preview of its earliest appointments (patient + time,
+ * dot-colored by status), so a front desk agent can spot a heavy day and
+ * see roughly who's on it before drilling in, without the grid growing
+ * past a single laptop screen's height. Clicking a day switches the whole
  * view into a full Day View (not an inline list below the grid) with its
  * own Prev/Next-day navigation and a "Back to Calendar" link, reusing the
  * same `ScheduleTable` as Today's Appointments for the actual schedule.
+ *
+ * Both of this component's own containers (the month grid card and the Day
+ * View's header bar) use the same frosted-glass treatment as the app's nav
+ * (`border-brand-gold/10 bg-brand-bg/50 backdrop-blur-xl`, see
+ * `app/layout.tsx`) instead of an opaque cream card -- everything else on
+ * this dark-themed page floats translucently over it; the Calendar's own
+ * chrome previously stood out as the one solid-white block on the page.
+ * `ScheduleTable`/`ScheduleFilters` underneath are intentionally left as
+ * their normal opaque selves -- they're shared with every other schedule
+ * tab, and restyling them here would make Calendar's table disagree with
+ * Today's Appointments' identical one.
  *
  * The grid opens on the dataset's reference "today" (see the backend's
  * `get_reference_now`) rather than the real current month, which would be
@@ -30,6 +42,9 @@ import { ScheduleTable } from "./ScheduleTable";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_PAGE_SIZE = 100;
+
+/** The app's shared frosted-glass container treatment (see `app/layout.tsx`'s nav) -- used for both of this component's own chrome pieces so neither reads as a plain white card on the dark page background. */
+const GLASS_CARD = "rounded-2xl border border-brand-gold/10 bg-brand-bg/50 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl";
 
 /** Shifts a "YYYY-MM" month string by `delta` months (can cross a year boundary either way). */
 function shiftMonth(month: string, delta: number): string {
@@ -99,36 +114,36 @@ export function CalendarView() {
 
   if (selectedDate) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10 sm:p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <div className="space-y-3">
+        <div className={`flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 ${GLASS_CARD}`}>
+          <button
+            type="button"
+            className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/10 hover:text-brand-dark"
+            onClick={() => setSelectedDate(undefined)}
+          >
+            ‹ Back to Calendar
+          </button>
+          <h2 className="order-first w-full text-center text-base font-semibold sm:order-none sm:w-auto sm:text-lg">
+            {formatDayHeading(selectedDate)}
+          </h2>
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark"
-              onClick={() => setSelectedDate(undefined)}
+              aria-label="Previous day"
+              className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/10 hover:text-brand-dark"
+              onClick={() => goToDay(shiftDay(selectedDate, -1))}
             >
-              ‹ Back to Calendar
+              ‹ Prev Day
             </button>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label="Previous day"
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark"
-                onClick={() => goToDay(shiftDay(selectedDate, -1))}
-              >
-                ‹ Prev Day
-              </button>
-              <button
-                type="button"
-                aria-label="Next day"
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark"
-                onClick={() => goToDay(shiftDay(selectedDate, 1))}
-              >
-                Next Day ›
-              </button>
-            </div>
+            <button
+              type="button"
+              aria-label="Next day"
+              className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/10 hover:text-brand-dark"
+              onClick={() => goToDay(shiftDay(selectedDate, 1))}
+            >
+              Next Day ›
+            </button>
           </div>
-          <h2 className="text-lg font-semibold">{formatDayHeading(selectedDate)}</h2>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -169,22 +184,22 @@ export function CalendarView() {
   const leadingBlanks = calendar ? parseISODate(`${calendar.month}-01`).getDay() : 0;
 
   return (
-    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10 sm:p-6">
-      <div className="mb-4 flex items-center justify-between">
+    <div className={`p-3 sm:p-4 ${GLASS_CARD}`}>
+      <div className="mb-2 flex items-center justify-between">
         <button
           type="button"
           aria-label="Previous month"
-          className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark disabled:opacity-30"
+          className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/10 hover:text-brand-dark disabled:opacity-30"
           disabled={!month}
           onClick={() => month && setMonth(shiftMonth(month, -1))}
         >
           ‹ Prev
         </button>
-        <h2 className="text-lg font-semibold">{month ? formatMonthLabel(month) : " "}</h2>
+        <h2 className="text-base font-semibold sm:text-lg">{month ? formatMonthLabel(month) : " "}</h2>
         <button
           type="button"
           aria-label="Next month"
-          className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark disabled:opacity-30"
+          className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/10 hover:text-brand-dark disabled:opacity-30"
           disabled={!month}
           onClick={() => month && setMonth(shiftMonth(month, 1))}
         >
@@ -197,12 +212,12 @@ export function CalendarView() {
 
       {calendar && (
         <>
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 sm:gap-2">
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wider text-brand-dark/40 sm:gap-1.5">
             {WEEKDAY_LABELS.map((label) => (
               <div key={label}>{label}</div>
             ))}
           </div>
-          <div className="mt-1 grid grid-cols-7 gap-1 sm:gap-2">
+          <div className="mt-1 grid grid-cols-7 gap-1 sm:gap-1.5">
             {Array.from({ length: leadingBlanks }).map((_, index) => (
               <div key={`blank-${index}`} />
             ))}
@@ -216,7 +231,7 @@ export function CalendarView() {
                   type="button"
                   aria-label={`${formatDate(day.date)}, ${day.count} appointment${day.count === 1 ? "" : "s"}`}
                   onClick={() => goToDay(day.date)}
-                  className={`flex flex-col items-center gap-1 rounded-lg py-2 text-sm transition-colors hover:bg-brand-dark/5 sm:min-h-[5.75rem] sm:items-stretch sm:justify-start sm:gap-1 sm:px-1.5 sm:py-1.5 sm:text-left ${
+                  className={`flex flex-col items-center gap-0.5 rounded-lg py-1.5 text-xs transition-colors hover:bg-brand-dark/10 sm:min-h-[4.25rem] sm:items-stretch sm:justify-start sm:gap-0.5 sm:px-1 sm:py-1 sm:text-left sm:text-sm ${
                     isReferenceToday ? "font-semibold" : ""
                   }`}
                   style={{ backgroundColor: day.count > 0 ? `rgba(197, 163, 126, ${intensity})` : undefined }}
@@ -226,14 +241,14 @@ export function CalendarView() {
                     {isReferenceToday && <span className="h-1 w-1 rounded-full bg-brand-gold" />}
                   </span>
                   {day.appointments.length > 0 && (
-                    <div className="hidden w-full flex-col gap-0.5 sm:flex">
+                    <div className="hidden w-full flex-col gap-px sm:flex">
                       {day.appointments.map((appt) => (
                         <span
                           key={appt.appointment_service_id}
-                          className="flex min-w-0 items-center gap-1 rounded bg-white/60 px-1 py-0.5 text-[10px] font-normal text-brand-dark/80"
+                          className="flex min-w-0 items-center gap-1 rounded bg-brand-bg/70 px-1 text-[9px] font-normal leading-tight text-brand-dark/80"
                         >
                           <span
-                            className="h-1.5 w-1.5 shrink-0 rounded-full"
+                            className="h-1 w-1 shrink-0 rounded-full"
                             style={{ backgroundColor: APPOINTMENT_STATUS_COLORS[appt.status] ?? "#64748b" }}
                           />
                           <span className="min-w-0 truncate">
@@ -242,7 +257,7 @@ export function CalendarView() {
                         </span>
                       ))}
                       {hiddenCount > 0 && (
-                        <span className="px-1 text-[10px] font-normal text-brand-dark/50">+{hiddenCount} more</span>
+                        <span className="px-1 text-[9px] font-normal leading-tight text-brand-dark/50">+{hiddenCount} more</span>
                       )}
                     </div>
                   )}
