@@ -53,7 +53,6 @@ Frontend has no automated test suite (see Future Enhancements) — verify manual
 
 ## Future Enhancements
 
-- The actual AI-driven natural-language query service — the current repository layer (`backend/app/repositories/`) is structured so this can call the same typed, parameterized functions the REST endpoints use, rather than needing raw SQL access.
-- An automated frontend test suite (component/interaction tests) — currently relies on manual verification given the project deadline.
-- Materialized views or precomputed summary tables for the analytics endpoints, if data volume grows well beyond the current ~4,000 patients.
-- Access control on the deployed app if this were ever to serve real (non-synthetic) patient data.
+- **Chatbot** - An integrated RAG chatbot or some such, that both the front desk agent and manager could query.
+- **Authentication & role-based access control** — the API is currently fully open. Production use would need real auth, with front desk vs. manager roles likely seeing different levels of data (e.g. revenue figures).
+- **CRUD support** — the spec scoped this to read-only, but real day-to-day use would need create/update/delete for appointments, patients, and payments, not just viewing them. I decided to implement it for the analytics page as a bonus, so that the med spa manager can create their own dashboards and graphs based on the data most important to them.
