@@ -148,6 +148,19 @@ export function parseISODate(value: string): Date {
   return new Date(year, month - 1, day);
 }
 
+/**
+ * Builds the "for this provider"/"for this service"/"for this provider and service"
+ * clause a schedule empty-state message appends when a provider and/or service filter
+ * is active -- shared by `TodaysAppointmentsTable` and `CalendarView` so their empty
+ * messages phrase an active filter combination identically. Returns "" when neither
+ * filter is active.
+ */
+export function scheduleFilterSuffix(hasProvider: boolean, hasService: boolean): string {
+  if (!hasProvider && !hasService) return "";
+  const parts = [hasProvider && "this provider", hasService && "this service"].filter(Boolean);
+  return ` for ${parts.join(" and ")}`;
+}
+
 /** Formats a "YYYY-MM" month string as e.g. "December 2025". */
 export function formatMonthLabel(month: string): string {
   const [year, monthNum] = month.split("-").map(Number);

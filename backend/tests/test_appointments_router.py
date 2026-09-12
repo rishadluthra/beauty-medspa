@@ -81,3 +81,34 @@ async def test_get_appointment_endpoint_accepts_ctx_and_service_id_query_params(
     assert body["next_appointment_id"] is None
 
     app.dependency_overrides.clear()
+
+
+async def test_get_appointment_endpoint_accepts_filter_service_id_and_sort_query_params(db_session):
+    """GET /api/appointments/{id}?filter_service_id=...&sort=... is accepted and parsed
+    through -- the endpoint's own `service_id` (which row was clicked) and the new
+    `filter_service_id` (which service to scope the schedule to) must not collide.
+    """
+    app.dependency_overrides[get_db] = lambda: db_session
+    db_session.add_all([make_patient(id="pat_1"), make_provider(), make_service(id="svc_1")])
+    await db_session.flush()
+    db_session.add(make_appointment(id="apt_1", patient_id="pat_1", status="confirmed"))
+    await db_session.flush()
+    db_session.add(make_appointment_service(appointment_id="apt_1", service_id="svc_1"))
+    await db_session.commit()
+
+    from app.repositories.patients import list_todays_appointments
+    schedule = await list_todays_appointments(db_session)
+    service_id = schedule.items[0].id
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            f"/api/appointments/apt_1?ctx=today&service_id={service_id}&filter_service_id=svc_1&sort=patient_name",
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["previous_appointment_id"] is None
+    assert body["next_appointment_id"] is None
+
+    app.dependency_overrides.clear()

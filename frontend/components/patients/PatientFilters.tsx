@@ -10,10 +10,10 @@
  * shape-morphing, just a clean fade+scale.
  *
  * The toggle button shares `FILTER_PILL_CLASSNAME` with
- * `ProviderFilterSelect` (Today's Appointments' "All Providers" control,
- * which sits in that same tab row when that tab is active) so the two
- * controls read as one consistent style rather than two different ones
- * (this used to be a solid opaque button next to a transparent one).
+ * `ScheduleFilters` (Today's Appointments' own filter control, which sits
+ * in that same tab row when that tab is active) so the two controls read
+ * as one consistent style rather than two different ones (this used to be
+ * a solid opaque button next to a transparent one).
  *
  * Holds only its own open/closed UI state — the actual filter *values* are
  * owned by `PatientsPage` and passed in as `filters`, with every change
@@ -24,7 +24,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { PatientQueryParams } from "@/lib/api";
 import { formatLabel } from "@/lib/format";
-import { FILTER_PILL_CLASSNAME } from "@/lib/pillStyles";
+import { FILTER_FIELD_CLASSNAME, FILTER_PILL_CLASSNAME } from "@/lib/pillStyles";
 
 // Raw backend enum values for the source/gender filters. These must match
 // the values the API expects (and that live in the seed data / DB), not
@@ -72,10 +72,6 @@ function FilterIcon() {
     </svg>
   );
 }
-
-/** Plain field styling shared by every control inside the dropdown card. */
-const fieldClassName =
-  "rounded-lg border border-brand-dark/10 bg-brand-dark/5 px-3 py-2 text-sm text-brand-dark outline-none transition-colors focus:ring-2 focus:ring-brand-gold/50 placeholder:text-brand-dark/40";
 
 export function PatientFilters({ filters, onChange }: Props) {
   const [isOpen, setIsOpen] = useState(false);
@@ -125,14 +121,14 @@ export function PatientFilters({ filters, onChange }: Props) {
           <input
             type="text"
             placeholder="Search name, email, or phone"
-            className={fieldClassName}
+            className={FILTER_FIELD_CLASSNAME}
             defaultValue={filters.search ?? ""}
             onChange={(e) => onChange({ search: e.target.value })}
           />
 
           <div className="grid grid-cols-2 gap-3">
             <select
-              className={fieldClassName}
+              className={FILTER_FIELD_CLASSNAME}
               value={filters.source ?? ""}
               onChange={(e) => onChange({ source: e.target.value || undefined })}
             >
@@ -150,7 +146,7 @@ export function PatientFilters({ filters, onChange }: Props) {
               ))}
             </select>
             <select
-              className={fieldClassName}
+              className={FILTER_FIELD_CLASSNAME}
               value={filters.gender ?? ""}
               onChange={(e) => onChange({ gender: e.target.value || undefined })}
             >
@@ -169,7 +165,7 @@ export function PatientFilters({ filters, onChange }: Props) {
                 min={0}
                 placeholder="Min"
                 aria-label="Minimum age"
-                className={`w-full ${fieldClassName}`}
+                className={`w-full ${FILTER_FIELD_CLASSNAME}`}
                 value={filters.age_min ?? ""}
                 onChange={(e) => onChange({ age_min: e.target.value ? Number(e.target.value) : undefined })}
               />
@@ -179,7 +175,7 @@ export function PatientFilters({ filters, onChange }: Props) {
                 min={0}
                 placeholder="Max"
                 aria-label="Maximum age"
-                className={`w-full ${fieldClassName}`}
+                className={`w-full ${FILTER_FIELD_CLASSNAME}`}
                 value={filters.age_max ?? ""}
                 onChange={(e) => onChange({ age_max: e.target.value ? Number(e.target.value) : undefined })}
               />
@@ -199,7 +195,7 @@ export function PatientFilters({ filters, onChange }: Props) {
               min={0}
               placeholder="e.g. 500"
               aria-label="Minimum total spent in dollars"
-              className={`w-full ${fieldClassName}`}
+              className={`w-full ${FILTER_FIELD_CLASSNAME}`}
               value={filters.min_total_spent_cents !== undefined ? filters.min_total_spent_cents / 100 : ""}
               onChange={(e) =>
                 onChange({
@@ -215,7 +211,7 @@ export function PatientFilters({ filters, onChange }: Props) {
               <input
                 type="date"
                 aria-label="Joined from"
-                className={`w-full ${fieldClassName}`}
+                className={`w-full ${FILTER_FIELD_CLASSNAME}`}
                 value={filters.created_from ?? ""}
                 onChange={(e) => onChange({ created_from: e.target.value || undefined })}
               />
@@ -223,7 +219,7 @@ export function PatientFilters({ filters, onChange }: Props) {
               <input
                 type="date"
                 aria-label="Joined to"
-                className={`w-full ${fieldClassName}`}
+                className={`w-full ${FILTER_FIELD_CLASSNAME}`}
                 value={filters.created_to ?? ""}
                 onChange={(e) => onChange({ created_to: e.target.value || undefined })}
               />
@@ -231,7 +227,7 @@ export function PatientFilters({ filters, onChange }: Props) {
           </div>
 
           <select
-            className={fieldClassName}
+            className={FILTER_FIELD_CLASSNAME}
             value={filters.sort ?? "name"}
             onChange={(e) => onChange({ sort: e.target.value })}
           >

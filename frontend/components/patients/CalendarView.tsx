@@ -16,10 +16,10 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { api } from "@/lib/api";
-import { formatDate, formatMonthLabel, parseISODate } from "@/lib/format";
+import { api, type ScheduleFilterParams } from "@/lib/api";
+import { formatDate, formatMonthLabel, parseISODate, scheduleFilterSuffix } from "@/lib/format";
 
-import { ProviderFilterSelect } from "./ProviderFilterSelect";
+import { ScheduleFilters } from "./ScheduleFilters";
 import { ScheduleTable } from "./ScheduleTable";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -41,7 +41,8 @@ export function CalendarView() {
   const [month, setMonth] = useState<string | undefined>(undefined);
   const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
   const [dayPage, setDayPage] = useState(1);
-  const [providerId, setProviderId] = useState<string | undefined>(undefined);
+  const [filters, setFilters] = useState<ScheduleFilterParams>({});
+  const { provider_id: providerId, service_id: serviceId, sort } = filters;
 
   const { data: calendar, isLoading: calendarLoading, isError: calendarError } = useQuery({
     queryKey: ["patients", "calendar", month],
@@ -57,8 +58,11 @@ export function CalendarView() {
   }, [calendar, month, selectedDate]);
 
   const { data: daySchedule, isLoading: dayLoading, isError: dayError } = useQuery({
-    queryKey: ["patients", "day", selectedDate, dayPage, providerId],
-    queryFn: () => api.getDaySchedule({ date: selectedDate as string, page: dayPage, page_size: DAY_PAGE_SIZE, provider_id: providerId }),
+    queryKey: ["patients", "day", selectedDate, dayPage, providerId, serviceId, sort],
+    queryFn: () => api.getDaySchedule({
+      date: selectedDate as string, page: dayPage, page_size: DAY_PAGE_SIZE,
+      provider_id: providerId, service_id: serviceId, sort,
+    }),
     enabled: selectedDate !== undefined,
   });
 
@@ -137,10 +141,10 @@ export function CalendarView() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-brand-bg/70">Schedule for {formatDate(selectedDate)}</p>
-            <ProviderFilterSelect
-              value={providerId}
-              onChange={(nextProviderId) => {
-                setProviderId(nextProviderId);
+            <ScheduleFilters
+              filters={filters}
+              onChange={(next) => {
+                setFilters((prev) => ({ ...prev, ...next }));
                 setDayPage(1);
               }}
             />
@@ -154,10 +158,14 @@ export function CalendarView() {
             onPageChange={setDayPage}
             loadingMessage="Loading that day's schedule…"
             errorMessage="Could not load that day's schedule. Please try again."
-            emptyMessage={`No appointments scheduled${providerId ? " for this provider" : ""} on this day.`}
+            emptyMessage={`No appointments scheduled${scheduleFilterSuffix(!!providerId, !!serviceId)} on this day.`}
             contextKind="day"
             providerId={providerId}
+            serviceId={serviceId}
+            sort={sort}
             date={selectedDate}
+            hasActiveFilters={!!providerId || !!serviceId}
+            onClearFilters={() => setFilters((prev) => ({ ...prev, provider_id: undefined, service_id: undefined }))}
           />
         </div>
       )}

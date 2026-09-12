@@ -188,11 +188,15 @@ export type PatientDetailContext =
  * that same schedule -- see the backend's `ScheduleContext`. `serviceId` identifies the
  * exact row clicked (an appointment can have more than one service scheduled at
  * different times), used both for ranking and to highlight that row on the destination
- * page. Encoded into the URL by `appointmentDetailHref` in `lib/api.ts`.
+ * page. `filterServiceId`/`sort` mirror whatever service filter and sort order the
+ * schedule view itself currently has active (see `ScheduleFilterParams` in `lib/api.ts`)
+ * -- named `filterServiceId`, not `serviceId`, to stay distinct from the clicked-row
+ * `serviceId` above (the backend keeps the same distinction: `filter_service_id` vs.
+ * `service_id`). Encoded into the URL by `appointmentDetailHref` in `lib/api.ts`.
  */
 export type AppointmentDetailContext =
-  | { kind: "today"; providerId?: string; serviceId: number }
-  | { kind: "day"; date: string; providerId?: string; serviceId: number };
+  | { kind: "today"; providerId?: string; filterServiceId?: string; sort?: string; serviceId: number }
+  | { kind: "day"; date: string; providerId?: string; filterServiceId?: string; sort?: string; serviceId: number };
 
 /** One scheduled service occurring "today", as returned by `GET /api/patients/today`. One row per service, not per patient. */
 export interface TodaysAppointmentItem {

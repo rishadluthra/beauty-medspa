@@ -15,18 +15,18 @@
  * ATTENTION_TO_DETAIL.md's note on Appointment.status being uncorrelated
  * with time in this dataset).
  *
- * `providerId` is a controlled prop, not local state -- the provider
- * filter itself is rendered by the parent (`PatientsPage`) in the shared
- * tab row (alongside the tab selector), the same way the All Patients
- * tab's Filters button is, rather than in its own row here that used to
- * push the whole schedule down an extra row.
+ * `filters` (provider/service/sort) is a controlled prop, not local state --
+ * the `ScheduleFilters` control itself is rendered by the parent
+ * (`PatientsPage`) in the shared tab row (alongside the tab selector), the
+ * same way the All Patients tab's Filters button is, rather than in its own
+ * row here that used to push the whole schedule down an extra row.
  */
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { api } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { api, type ScheduleFilterParams } from "@/lib/api";
+import { formatDate, scheduleFilterSuffix } from "@/lib/format";
 
 import { ComingUpStrip } from "./ComingUpStrip";
 import { ScheduleTable } from "./ScheduleTable";
@@ -34,23 +34,25 @@ import { ScheduleTable } from "./ScheduleTable";
 const PAGE_SIZE = 100;
 
 interface Props {
-  providerId: string | undefined;
+  filters: ScheduleFilterParams;
+  onFiltersChange: (next: Partial<ScheduleFilterParams>) => void;
 }
 
-export function TodaysAppointmentsTable({ providerId }: Props) {
+export function TodaysAppointmentsTable({ filters, onFiltersChange }: Props) {
   const [page, setPage] = useState(1);
+  const { provider_id: providerId, service_id: serviceId, sort } = filters;
 
-  // `providerId` now comes from the parent (rendered in the shared tab
-  // row) rather than being set locally, so resetting back to page 1 on a
-  // provider change can't happen inline in an onChange handler anymore --
-  // this effect does the equivalent whenever the prop itself changes.
+  // `filters` now comes from the parent (rendered in the shared tab row)
+  // rather than being set locally, so resetting back to page 1 on a
+  // filter change can't happen inline in an onChange handler anymore --
+  // this effect does the equivalent whenever the filters actually change.
   useEffect(() => {
     setPage(1);
-  }, [providerId]);
+  }, [providerId, serviceId, sort]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patients", "today", page, providerId],
-    queryFn: () => api.getTodaysAppointments({ page, page_size: PAGE_SIZE, provider_id: providerId }),
+    queryKey: ["patients", "today", page, providerId, serviceId, sort],
+    queryFn: () => api.getTodaysAppointments({ page, page_size: PAGE_SIZE, provider_id: providerId, service_id: serviceId, sort }),
   });
 
   return (
@@ -65,9 +67,13 @@ export function TodaysAppointmentsTable({ providerId }: Props) {
         onPageChange={setPage}
         loadingMessage="Loading today's schedule…"
         errorMessage="Could not load today's schedule. Please try again."
-        emptyMessage={`No appointments scheduled today${providerId ? " for this provider" : ""}.`}
+        emptyMessage={`No appointments scheduled today${scheduleFilterSuffix(!!providerId, !!serviceId)}.`}
         contextKind="today"
         providerId={providerId}
+        serviceId={serviceId}
+        sort={sort}
+        hasActiveFilters={!!providerId || !!serviceId}
+        onClearFilters={() => onFiltersChange({ provider_id: undefined, service_id: undefined })}
       />
 
       <ComingUpStrip />

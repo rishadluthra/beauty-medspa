@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Appointment, AppointmentService, Patient, Payment, Provider, Service
-from app.repositories.patients import get_reference_now
+from app.repositories.patients import _schedule_sort_expressions, get_reference_now
 from app.schemas.appointment import AppointmentDetailResponse, AppointmentPatientSummary
 from app.schemas.patient import AppointmentServiceItem, PaymentSummary
 
@@ -20,24 +20,33 @@ from app.schemas.patient import AppointmentServiceItem, PaymentSummary
 @dataclass
 class ScheduleContext:
     """Which schedule window (the reference "today", or a specific calendar day) and
-    provider filter an appointment was navigated from, for its own Previous/Next --
-    the same shape of scope `_list_schedule_between` (in app.repositories.patients)
-    itself takes, since Previous/Next here has to walk that exact same window/order.
+    provider/service filter (plus sort) an appointment was navigated from, for its own
+    Previous/Next -- the same shape of scope `_list_schedule_between` (in
+    app.repositories.patients) itself takes, since Previous/Next here has to walk that
+    exact same window/order.
+
+    `filter_service_id` (a `Service.id`, e.g. "svc_...") is the schedule's own service
+    filter -- deliberately not named `service_id` like `get_appointment_detail`'s own
+    parameter, which is a *different* id (the specific `AppointmentService` row that was
+    clicked, an int) -- the two must never be confused.
     """
 
     kind: str = "today"  # "today" or "day"
     target_date: date | None = None  # only meaningful for kind="day"
     provider_id: str | None = None
+    filter_service_id: str | None = None
+    sort: str = "time"
 
 
 async def _neighbors_in_schedule(
-    db: AsyncSession, service_id: int | None, start_of_day: datetime, end_of_day: datetime, provider_id: str | None,
+    db: AsyncSession, service_id: int | None, start_of_day: datetime, end_of_day: datetime,
+    provider_id: str | None, filter_service_id: str | None, sort: str,
 ) -> tuple[str | None, int | None, str | None, int | None]:
     """Previous/Next appointment for the Appointment Detail page: the appointment AND
     the specific `AppointmentService` row belonging to the schedule slot immediately
     before/after `service_id`, in the same `[start_of_day, end_of_day)` window
     `_list_schedule_between` (`app.repositories.patients`) displays (same filters, same
-    `(start, id)` order).
+    sort order -- see `_schedule_sort_expressions`).
 
     Returns `(previous_appointment_id, previous_service_id, next_appointment_id, next_service_id)`.
     The *_service_id values matter just as much as the *_appointment_id ones: the
@@ -57,6 +66,8 @@ async def _neighbors_in_schedule(
     base = (
         select(AppointmentService.id, AppointmentService.appointment_id)
         .join(Appointment, Appointment.id == AppointmentService.appointment_id)
+        .join(Patient, Patient.id == Appointment.patient_id)
+        .join(Provider, Provider.id == AppointmentService.provider_id)
         .where(
             Appointment.status != "cancelled",
             AppointmentService.start >= start_of_day,
@@ -65,8 +76,10 @@ async def _neighbors_in_schedule(
     )
     if provider_id:
         base = base.where(AppointmentService.provider_id == provider_id)
+    if filter_service_id:
+        base = base.where(AppointmentService.service_id == filter_service_id)
     ranked = base.add_columns(
-        func.row_number().over(order_by=(AppointmentService.start.asc(), AppointmentService.id.asc())).label("rn")
+        func.row_number().over(order_by=_schedule_sort_expressions(sort)).label("rn")
     ).subquery()
 
     current_rn = (await db.execute(select(ranked.c.rn).where(ranked.c.id == service_id))).scalar_one_or_none()
@@ -156,7 +169,7 @@ async def get_appointment_detail(
         start_of_day, end_of_day = reference_now, reference_now + timedelta(days=1)
 
     previous_appointment_id, previous_service_id, next_appointment_id, next_service_id = await _neighbors_in_schedule(
-        db, service_id, start_of_day, end_of_day, context.provider_id,
+        db, service_id, start_of_day, end_of_day, context.provider_id, context.filter_service_id, context.sort,
     )
 
     return AppointmentDetailResponse(

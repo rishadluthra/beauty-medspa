@@ -23,6 +23,8 @@ async def get_appointment(
     ctx: str | None = None,
     service_id: int | None = None,
     provider_id: str | None = None,
+    filter_service_id: str | None = None,
+    sort: str = "time",
     date: date | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> AppointmentDetailResponse:
@@ -32,13 +34,18 @@ async def get_appointment(
 
     `ctx` ("today" | "day") and `date` (only meaningful for `ctx=day`) say which schedule
     window Previous/Next should walk -- the reference "today", or a specific calendar
-    day -- mirroring `GET /api/patients/today` and `GET /api/patients/day`. `provider_id`
-    narrows that window the same way. `service_id` identifies the specific schedule row
-    that was actually clicked (an appointment can have more than one service scheduled
-    at different times), used both to compute Previous/Next and to tell the frontend
-    which service line to highlight.
+    day -- mirroring `GET /api/patients/today` and `GET /api/patients/day`. `provider_id`/
+    `filter_service_id`/`sort` narrow and order that window the same way those endpoints'
+    own `provider_id`/`service_id`/`sort` do (named `filter_service_id` here specifically
+    to avoid confusion with this endpoint's own `service_id`, below). `service_id`
+    identifies the specific schedule row that was actually clicked (an appointment can
+    have more than one service scheduled at different times), used both to compute
+    Previous/Next and to tell the frontend which service line to highlight.
     """
-    context = ScheduleContext(kind=ctx or "today", target_date=date, provider_id=provider_id)
+    context = ScheduleContext(
+        kind=ctx or "today", target_date=date, provider_id=provider_id,
+        filter_service_id=filter_service_id, sort=sort,
+    )
     detail = await get_appointment_detail(db, appointment_id, service_id, context)
     if detail is None:
         raise HTTPException(status_code=404, detail=f"Appointment {appointment_id} not found")

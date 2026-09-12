@@ -104,6 +104,19 @@ async function apiPut<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/**
+ * Filter/sort params shared by Today's Appointments and the Calendar day drill-down --
+ * accepted by `GET /api/patients/today` and `GET /api/patients/day`. Owned by
+ * `ScheduleFilters` (the dropdown that edits them) and threaded through by whichever
+ * page/component holds the current filter state.
+ */
+export interface ScheduleFilterParams {
+  provider_id?: string;
+  service_id?: string;
+  /** "time" (default, chronological), "patient_name", or "provider_name". */
+  sort?: string;
+}
+
 /** Query/filter/pagination params accepted by `GET /api/patients`. */
 export interface PatientQueryParams {
   search?: string;
@@ -132,8 +145,8 @@ export interface PatientQueryParams {
 export const api = {
   /** Fetches a page of the patient table, with optional search/filter/sort. */
   getPatients: (params: PatientQueryParams) => apiGet<PatientListResponse>("/api/patients", { ...params }),
-  /** Fetches today's full schedule (the default Patients-page view). `provider_id` narrows to one provider's own schedule. */
-  getTodaysAppointments: (params: { page?: number; page_size?: number; provider_id?: string }) =>
+  /** Fetches today's full schedule (the default Patients-page view). `provider_id`/`service_id` narrow to one provider's/service's own schedule; `sort` picks the display order. */
+  getTodaysAppointments: (params: { page?: number; page_size?: number } & ScheduleFilterParams) =>
     apiGet<TodaysAppointmentsResponse>("/api/patients/today", { ...params }),
   /**
    * Fetches a page of the Upcoming Appointments dashboard (patients scheduled after
@@ -152,7 +165,7 @@ export const api = {
   /** Fetches one calendar month's day-by-day appointment density, for the Calendar view's grid. Omitting `month` defaults to the dataset's reference month. */
   getCalendarMonth: (params: { month?: string }) => apiGet<CalendarMonthResponse>("/api/patients/calendar", { ...params }),
   /** Fetches the full schedule for one specific day, for the Calendar view's day drill-down. */
-  getDaySchedule: (params: { date: string; page?: number; page_size?: number; provider_id?: string }) =>
+  getDaySchedule: (params: { date: string; page?: number; page_size?: number } & ScheduleFilterParams) =>
     apiGet<TodaysAppointmentsResponse>("/api/patients/day", { ...params }),
   /** Fetches every service, for populating the walk-in availability checker's service picker. */
   getServices: () => apiGet<ServiceListResponse>("/api/services"),
@@ -278,8 +291,9 @@ export function patientDetailHref(patientId: string, context?: PatientDetailCont
  * Builds the `/appointments/{id}` URL for linking to an appointment from a Today's
  * Appointments / Calendar schedule row, encoding `context` into the query string with
  * the exact key names `api.getAppointmentDetail`/the backend expect (`ctx`,
- * `provider_id`, `service_id`, `date`) -- so the destination's Previous/Next buttons
- * walk that same schedule window (see `AppointmentDetailContext`).
+ * `provider_id`, `filter_service_id`, `sort`, `service_id`, `date`) -- so the
+ * destination's Previous/Next buttons walk that same schedule window, filtered and
+ * sorted the same way (see `AppointmentDetailContext`).
  */
 export function appointmentDetailHref(appointmentId: string, context: AppointmentDetailContext): string {
   const query = new URLSearchParams();
@@ -289,6 +303,8 @@ export function appointmentDetailHref(appointmentId: string, context: Appointmen
 
   set("ctx", context.kind);
   set("provider_id", context.providerId);
+  set("filter_service_id", context.filterServiceId);
+  set("sort", context.sort);
   set("service_id", context.serviceId);
   if (context.kind === "day") set("date", context.date);
 

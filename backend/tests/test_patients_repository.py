@@ -618,6 +618,82 @@ async def test_list_todays_appointments_one_row_per_service_excludes_cancelled_a
     assert [item.service_name for item in filtered.items] == ["Facial"]
 
 
+async def test_list_todays_appointments_filters_by_service(db_session):
+    """service_id narrows the schedule to just that service's own bookings today --
+    mirrors provider_id's own filtering, using the same two-service-appointment seed
+    `test_list_todays_appointments_one_row_per_service_excludes_cancelled_and_other_days`
+    already relies on.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Alice", last_name="Anderson"),
+        make_provider(id="prv_1", first_name="Dr", last_name="Smith"),
+        make_provider(id="prv_2", first_name="Dr", last_name="Jones"),
+        make_service(id="svc_1", name="Consultation"),
+        make_service(id="svc_2", name="Facial"),
+        make_appointment(id="apt_a_today", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_a_later", patient_id="pat_a", status="confirmed"),  # sets the latest data month
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(
+            appointment_id="apt_a_today", service_id="svc_2", provider_id="prv_2",
+            start=datetime(2026, 1, 1, 14, 0), end=datetime(2026, 1, 1, 14, 30),
+        ),
+        make_appointment_service(
+            appointment_id="apt_a_today", service_id="svc_1", provider_id="prv_1",
+            start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30),
+        ),
+        make_appointment_service(appointment_id="apt_a_later", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    filtered = await list_todays_appointments(db_session, service_id="svc_2")
+    assert [item.service_name for item in filtered.items] == ["Facial"]
+
+
+async def test_list_todays_appointments_sort_orders_by_patient_or_provider_name(db_session):
+    """`sort` picks the display order: "time" (default, chronological), "patient_name",
+    or "provider_name" -- each grouping/ordering the same three rows differently, proving
+    the parameter genuinely changes the query's ORDER BY rather than being ignored.
+
+    Three services today, deliberately seeded so chronological order, patient-name order,
+    and provider-name order all disagree with each other:
+      - 9:00 -- patient "Zed Zeta", provider "Dr Early"
+      - 10:00 -- patient "Amy Alpha", provider "Dr Middle"
+      - 11:00 -- patient "Mia Mid", provider "Dr Zephyr"
+    """
+    db_session.add_all([
+        make_patient(id="pat_z", first_name="Zed", last_name="Zeta"),
+        make_patient(id="pat_a", first_name="Amy", last_name="Alpha"),
+        make_patient(id="pat_m", first_name="Mia", last_name="Mid"),
+        make_provider(id="prv_e", first_name="Dr", last_name="Early"),
+        make_provider(id="prv_mid", first_name="Dr", last_name="Middle"),
+        make_provider(id="prv_z", first_name="Dr", last_name="Zephyr"),
+        make_service(),
+        make_appointment(id="apt_z", patient_id="pat_z", status="confirmed"),
+        make_appointment(id="apt_a", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_m", patient_id="pat_m", status="confirmed"),
+        make_appointment(id="apt_later", patient_id="pat_a", status="confirmed"),  # sets the latest data month
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_z", provider_id="prv_e", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_a", provider_id="prv_mid", start=datetime(2026, 1, 1, 10, 0), end=datetime(2026, 1, 1, 10, 30)),
+        make_appointment_service(appointment_id="apt_m", provider_id="prv_z", start=datetime(2026, 1, 1, 11, 0), end=datetime(2026, 1, 1, 11, 30)),
+        make_appointment_service(appointment_id="apt_later", provider_id="prv_e", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    by_time = await list_todays_appointments(db_session, sort="time")
+    assert [item.patient_id for item in by_time.items] == ["pat_z", "pat_a", "pat_m"]
+
+    by_patient_name = await list_todays_appointments(db_session, sort="patient_name")
+    assert [item.patient_id for item in by_patient_name.items] == ["pat_a", "pat_m", "pat_z"]
+
+    by_provider_name = await list_todays_appointments(db_session, sort="provider_name")
+    assert [item.patient_id for item in by_provider_name.items] == ["pat_z", "pat_a", "pat_m"]
+
+
 async def test_list_upcoming_appointments_filters_by_provider_using_that_providers_own_soonest_slot(db_session):
     """provider_id filters to that provider's own upcoming services, and "soonest" is
     computed against just that provider's slots -- not the appointment's overall soonest

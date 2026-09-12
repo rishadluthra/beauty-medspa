@@ -77,16 +77,22 @@ async def get_todays_appointments(
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
     provider_id: str | None = None,
+    service_id: str | None = None,
+    sort: str = "time",
     db: AsyncSession = Depends(get_db),
 ) -> TodaysAppointmentsResponse:
     """The full schedule for "today" -- the front desk dashboard's default view.
 
     See `list_todays_appointments` for what "today" means against this
     static seed dataset, and why this is one row per scheduled service
-    rather than one row per patient. `provider_id`, if given, narrows this
-    to one provider's own schedule for the day.
+    rather than one row per patient. `provider_id`/`service_id`, if given,
+    narrow this to one provider's and/or one service's own schedule for the
+    day. `sort` picks the display order -- "time" (default), "patient_name",
+    or "provider_name".
     """
-    return await list_todays_appointments(db, page=page, page_size=page_size, provider_id=provider_id)
+    return await list_todays_appointments(
+        db, page=page, page_size=page_size, provider_id=provider_id, service_id=service_id, sort=sort,
+    )
 
 
 @router.get("/upcoming", response_model=UpcomingAppointmentsResponse)
@@ -144,15 +150,19 @@ async def get_day_schedule(
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
     provider_id: str | None = None,
+    service_id: str | None = None,
+    sort: str = "time",
     db: AsyncSession = Depends(get_db),
 ) -> TodaysAppointmentsResponse:
     """The full schedule for one specific day, for the Calendar view's day drill-down.
 
     Same shape as `/today`, for a caller-chosen `date` (YYYY-MM-DD) instead of always the
-    dataset's reference "today". `provider_id`, if given, narrows this to one provider's
-    own schedule for that day.
+    dataset's reference "today". `provider_id`/`service_id`/`sort` behave identically to
+    `/today`'s own.
     """
-    return await list_schedule_for_date(db, date, page=page, page_size=page_size, provider_id=provider_id)
+    return await list_schedule_for_date(
+        db, date, page=page, page_size=page_size, provider_id=provider_id, service_id=service_id, sort=sort,
+    )
 
 
 @router.get("/{patient_id}", response_model=PatientDetailResponse)

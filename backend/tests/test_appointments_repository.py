@@ -188,6 +188,75 @@ async def test_get_appointment_detail_provider_filter_narrows_the_schedule_windo
     assert result.next_appointment_id == "apt_c"  # pat_b's Dr Jones slot is filtered out
 
 
+async def test_get_appointment_detail_service_filter_narrows_the_schedule_window(db_session):
+    """`ScheduleContext(filter_service_id=...)` narrows Previous/Next the same way
+    `list_todays_appointments(service_id=...)` narrows the displayed schedule -- mirrors
+    the analogous provider_id test above.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a"), make_patient(id="pat_b"), make_patient(id="pat_c"),
+        make_provider(),
+        make_service(id="svc_1", name="Consultation"),
+        make_service(id="svc_2", name="Facial"),
+        make_appointment(id="apt_a", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_a_later", patient_id="pat_a", status="confirmed"),  # sets the latest data month
+        make_appointment(id="apt_b", patient_id="pat_b", status="confirmed"),
+        make_appointment(id="apt_c", patient_id="pat_c", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_a", service_id="svc_1", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_a_later", service_id="svc_1", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+        make_appointment_service(appointment_id="apt_b", service_id="svc_2", start=datetime(2026, 1, 1, 11, 0), end=datetime(2026, 1, 1, 11, 30)),
+        make_appointment_service(appointment_id="apt_c", service_id="svc_1", start=datetime(2026, 1, 1, 14, 0), end=datetime(2026, 1, 1, 14, 30)),
+    ])
+    await db_session.commit()
+
+    consultation_schedule = await list_todays_appointments(db_session, service_id="svc_1")
+    a_service_id = next(item.id for item in consultation_schedule.items if item.patient_id == "pat_a")
+
+    result = await get_appointment_detail(
+        db_session, "apt_a", a_service_id, ScheduleContext(filter_service_id="svc_1"),
+    )
+    assert result.previous_appointment_id is None
+    assert result.next_appointment_id == "apt_c"  # pat_b's Facial slot is filtered out
+
+
+async def test_get_appointment_detail_sort_changes_previous_next_order(db_session):
+    """`ScheduleContext(sort=...)` walks Previous/Next in whatever order that sort picks
+    (see `_schedule_sort_expressions`) -- not always chronological.
+    """
+    db_session.add_all([
+        make_patient(id="pat_z", first_name="Zed", last_name="Zeta"),
+        make_patient(id="pat_a", first_name="Amy", last_name="Alpha"),
+        make_patient(id="pat_m", first_name="Mia", last_name="Mid"),
+        make_provider(), make_service(),
+        make_appointment(id="apt_z", patient_id="pat_z", status="confirmed"),
+        make_appointment(id="apt_a", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_m", patient_id="pat_m", status="confirmed"),
+        make_appointment(id="apt_later", patient_id="pat_a", status="confirmed"),  # sets the latest data month
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_z", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_a", start=datetime(2026, 1, 1, 10, 0), end=datetime(2026, 1, 1, 10, 30)),
+        make_appointment_service(appointment_id="apt_m", start=datetime(2026, 1, 1, 11, 0), end=datetime(2026, 1, 1, 11, 30)),
+        make_appointment_service(appointment_id="apt_later", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    by_patient_name = await list_todays_appointments(db_session, sort="patient_name")
+    m_service_id = next(item.id for item in by_patient_name.items if item.patient_id == "pat_m")
+
+    # Chronologically apt_m (11:00) sits between apt_a (10:00) and nothing after it, but
+    # sorted by patient_name (Alpha, Mid, Zeta) its neighbors are pat_a before and pat_z after.
+    result = await get_appointment_detail(
+        db_session, "apt_m", m_service_id, ScheduleContext(sort="patient_name"),
+    )
+    assert result.previous_appointment_id == "apt_a"
+    assert result.next_appointment_id == "apt_z"
+
+
 async def test_get_appointment_detail_day_context_targets_the_given_date_not_the_reference_day(db_session):
     """`ScheduleContext(kind="day", target_date=...)` scopes Previous/Next to that
     specific calendar day's schedule, not the dataset's reference "today".

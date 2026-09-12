@@ -26,14 +26,20 @@ interface Props {
   emptyMessage: string;
   /**
    * Which schedule this table is showing -- "today" (`TodaysAppointmentsTable`) or a
-   * specific calendar day (`CalendarView`'s drill-down) -- plus whatever provider filter
-   * is active, so a row's link-out scopes the destination Appointment Detail page's
-   * Previous/Next buttons to this same schedule (see `AppointmentDetailContext`). `date`
-   * is required for "day" (the specific day being viewed) and ignored for "today".
+   * specific calendar day (`CalendarView`'s drill-down) -- plus whatever provider/service
+   * filter and sort are active, so a row's link-out scopes the destination Appointment
+   * Detail page's Previous/Next buttons to this same schedule (see
+   * `AppointmentDetailContext`). `date` is required for "day" (the specific day being
+   * viewed) and ignored for "today".
    */
   contextKind: "today" | "day";
   providerId: string | undefined;
+  serviceId: string | undefined;
+  sort: string | undefined;
   date?: string;
+  /** Whether a provider/service filter is currently active -- shows a "Clear filters" action in the empty state when true. */
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -47,19 +53,61 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * Simple inbox-with-slash glyph for the empty state below -- a plain inline SVG, matching
+ * this app's existing convention of hand-drawn icons (see `PatientFilters`'s `FilterIcon`)
+ * rather than pulling in an icon library for one glyph.
+ */
+function EmptyStateIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="h-8 w-8 text-brand-sage/60">
+      <path d="M4 7h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" />
+      <path d="M4 7l2-4h12l2 4" />
+      <path d="M4 7l6 5h4l6-5" />
+    </svg>
+  );
+}
+
+/**
+ * The "no rows" state for both the desktop table and the mobile card list below --
+ * deliberately more than a bare line of text (an icon, the message, and, when a
+ * provider/service filter narrowed the result to nothing, a "Clear filters" action) so a
+ * zero-result schedule reads as an intentional, designed state rather than a broken page.
+ */
+function EmptyState({ message, hasActiveFilters, onClearFilters }: { message: string; hasActiveFilters: boolean; onClearFilters: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-2 p-8 text-center">
+      <EmptyStateIcon />
+      <p className="text-brand-sage">{message}</p>
+      {hasActiveFilters && (
+        <button
+          type="button"
+          onClick={onClearFilters}
+          className="mt-1 rounded-full border border-brand-dark/20 px-4 py-1.5 text-sm text-brand-dark/70 transition-colors hover:border-brand-gold hover:text-brand-gold-dark"
+        >
+          Clear filters
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ScheduleTable({
   data, isLoading, isError, page, onPageChange, loadingMessage, errorMessage, emptyMessage,
-  contextKind, providerId, date,
+  contextKind, providerId, serviceId, sort, date, hasActiveFilters, onClearFilters,
 }: Props) {
   const router = useRouter();
 
-  // `serviceId` (the specific AppointmentService row, i.e. `item.id`) is filled in per
+  // `rowServiceId` (the specific AppointmentService row, i.e. `item.id`) is filled in per
   // row below -- an appointment can have more than one service on the same schedule, so
-  // the row actually clicked has to be pinned down, not just the appointment.
-  const contextFor = (serviceId: number): AppointmentDetailContext =>
+  // the row actually clicked has to be pinned down, not just the appointment. `serviceId`
+  // (this table's own service *filter*, a `Service.id` string) and `sort` are threaded
+  // through too, so the destination's Previous/Next walk this exact same filtered/sorted
+  // schedule -- see `AppointmentDetailContext.filterServiceId`/`.sort`.
+  const contextFor = (rowServiceId: number): AppointmentDetailContext =>
     contextKind === "today"
-      ? { kind: "today", providerId, serviceId }
-      : { kind: "day", date: date as string, providerId, serviceId };
+      ? { kind: "today", providerId, filterServiceId: serviceId, sort, serviceId: rowServiceId }
+      : { kind: "day", date: date as string, providerId, filterServiceId: serviceId, sort, serviceId: rowServiceId };
 
   return (
     <>
@@ -97,8 +145,8 @@ export function ScheduleTable({
                 {/* Empty-state row. colSpan={6} must match the number of <th> columns above. */}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-brand-sage">
-                      {emptyMessage}
+                    <td colSpan={6}>
+                      <EmptyState message={emptyMessage} hasActiveFilters={hasActiveFilters} onClearFilters={onClearFilters} />
                     </td>
                   </tr>
                 )}
@@ -123,9 +171,9 @@ export function ScheduleTable({
           {/* Mobile equivalent of the table above — same rows, same click-through, laid out as cards. */}
           <div className="space-y-2 sm:hidden">
             {data.items.length === 0 && (
-              <p className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-6 text-center text-brand-sage shadow-lg shadow-brand-gold/10">
-                {emptyMessage}
-              </p>
+              <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg shadow-lg shadow-brand-gold/10">
+                <EmptyState message={emptyMessage} hasActiveFilters={hasActiveFilters} onClearFilters={onClearFilters} />
+              </div>
             )}
             {data.items.map((item) => (
               <div

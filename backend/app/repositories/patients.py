@@ -495,14 +495,30 @@ async def get_reference_now(db: AsyncSession) -> datetime:
     return latest_two_months[1]  # index 0 is the latest month; 1 is the one before it
 
 
+def _schedule_sort_expressions(sort: str) -> tuple:
+    """Maps a schedule `sort` value to its ORDER BY expression(s), always ending in
+    `AppointmentService.id` as a tiebreaker -- same reasoning as `_patient_sort_expressions`,
+    just for schedule rows. Shared by `_list_schedule_between` and
+    `app.repositories.appointments._neighbors_in_schedule` so a schedule row's Previous/
+    Next always walks the exact same order the list itself is displayed in.
+    """
+    options = {
+        "time": (AppointmentService.start.asc(),),
+        "patient_name": (Patient.last_name.asc(), Patient.first_name.asc()),
+        "provider_name": (Provider.last_name.asc(), Provider.first_name.asc(), AppointmentService.start.asc()),
+    }
+    return options.get(sort, options["time"]) + (AppointmentService.id.asc(),)
+
+
 async def _list_schedule_between(
     db: AsyncSession, start_of_day: datetime, end_of_day: datetime, reference_date: date,
-    page: int, page_size: int, provider_id: str | None,
+    page: int, page_size: int, provider_id: str | None, service_id: str | None = None, sort: str = "time",
 ) -> TodaysAppointmentsResponse:
     """Shared query behind `list_todays_appointments` and `list_schedule_for_date`: every
     scheduled service (one row per `AppointmentService`, not per `Appointment` -- see
     `list_todays_appointments`) starting within `[start_of_day, end_of_day)`, excluding
-    cancelled appointments, optionally narrowed to one provider.
+    cancelled appointments, optionally narrowed to one provider and/or one service, in
+    the order `_schedule_sort_expressions(sort)` picks (defaulting to chronological).
     """
     query = (
         select(
@@ -519,16 +535,18 @@ async def _list_schedule_between(
             AppointmentService.start >= start_of_day,
             AppointmentService.start < end_of_day,
         )
-        # `.id` breaks ties between services starting at the exact same
-        # timestamp -- common in this seed data -- so the display order here
-        # and the row ranking in `app.repositories.appointments`'s Previous/Next
-        # (for the Appointment Detail page a schedule row links to) always agree.
-        .order_by(AppointmentService.start.asc(), AppointmentService.id.asc())
     )
     if provider_id:
         query = query.where(AppointmentService.provider_id == provider_id)
+    if service_id:
+        query = query.where(AppointmentService.service_id == service_id)
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
+    # `.id` breaks ties within whatever `sort` picks (e.g. two services starting at the
+    # exact same timestamp, common in this seed data) -- so the display order here and
+    # the row ranking in `app.repositories.appointments`'s Previous/Next (for the
+    # Appointment Detail page a schedule row links to) always agree.
+    query = query.order_by(*_schedule_sort_expressions(sort))
     query = query.offset((page - 1) * page_size).limit(page_size)
     rows = (await db.execute(query)).all()
 
@@ -549,6 +567,7 @@ async def _list_schedule_between(
 
 async def list_todays_appointments(
     db: AsyncSession, page: int = 1, page_size: int = 100, provider_id: str | None = None,
+    service_id: str | None = None, sort: str = "time",
 ) -> TodaysAppointmentsResponse:
     """List every scheduled service occurring on the reference "today", for the front desk's
     at-a-glance daily schedule -- see `get_reference_now` for what "today" means
@@ -563,16 +582,21 @@ async def list_todays_appointments(
 
     `provider_id`, if given, restricts this to the services that specific provider is
     performing today -- e.g. "what does Dr. Smith have today" -- rather than the whole
-    clinic's schedule.
+    clinic's schedule. `service_id` narrows the same way, to one specific service being
+    performed. `sort` picks the display order (see `_schedule_sort_expressions`) --
+    chronological by default, or grouped by patient/provider name.
     """
     reference_now = await get_reference_now(db)
     reference_date = reference_now.date()
     end_of_day = reference_now + timedelta(days=1)
-    return await _list_schedule_between(db, reference_now, end_of_day, reference_date, page, page_size, provider_id)
+    return await _list_schedule_between(
+        db, reference_now, end_of_day, reference_date, page, page_size, provider_id, service_id, sort,
+    )
 
 
 async def list_schedule_for_date(
     db: AsyncSession, target_date: date, page: int = 1, page_size: int = 100, provider_id: str | None = None,
+    service_id: str | None = None, sort: str = "time",
 ) -> TodaysAppointmentsResponse:
     """List every scheduled service on an arbitrary day, for the Calendar view's drill-down
     (click a day, see that day's schedule) -- the same shape and semantics as
@@ -580,7 +604,9 @@ async def list_schedule_for_date(
     """
     start_of_day = datetime.combine(target_date, time.min)
     end_of_day = start_of_day + timedelta(days=1)
-    return await _list_schedule_between(db, start_of_day, end_of_day, target_date, page, page_size, provider_id)
+    return await _list_schedule_between(
+        db, start_of_day, end_of_day, target_date, page, page_size, provider_id, service_id, sort,
+    )
 
 
 async def get_calendar_month(

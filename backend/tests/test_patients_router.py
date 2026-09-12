@@ -6,11 +6,13 @@ httpx's ASGITransport, confirming the router wiring, request handling,
 and JSON serialization all work end-to-end.
 """
 
+from datetime import datetime
+
 from httpx import ASGITransport, AsyncClient
 
 from app.db import get_db
 from app.main import app
-from tests.factories import make_patient
+from tests.factories import make_appointment, make_appointment_service, make_patient, make_provider, make_service
 
 
 async def test_get_patients_endpoint_returns_list(db_session):
@@ -103,6 +105,32 @@ async def test_get_todays_appointments_endpoint_is_reachable(db_session):
     body = response.json()
     assert body["items"] == []
     assert "reference_date" in body
+
+    app.dependency_overrides.clear()
+
+
+async def test_get_todays_appointments_endpoint_accepts_service_id_and_sort_params(db_session):
+    """GET /api/patients/today?service_id=...&sort=... is accepted (not a 422) and the
+    params are genuinely parsed through to the repository -- confirms the router wiring
+    for both new query params, not just that the route still resolves.
+    """
+    app.dependency_overrides[get_db] = lambda: db_session
+    db_session.add_all([make_patient(id="pat_1"), make_provider(), make_service(id="svc_1")])
+    await db_session.flush()
+    db_session.add(make_appointment(id="apt_1", patient_id="pat_1", status="confirmed"))
+    await db_session.flush()
+    db_session.add(make_appointment_service(appointment_id="apt_1", service_id="svc_1", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)))
+    await db_session.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        matching = await client.get("/api/patients/today?service_id=svc_1&sort=patient_name")
+        non_matching = await client.get("/api/patients/today?service_id=svc_does_not_exist")
+
+    assert matching.status_code == 200
+    assert matching.json()["total"] == 1
+    assert non_matching.status_code == 200
+    assert non_matching.json()["total"] == 0
 
     app.dependency_overrides.clear()
 

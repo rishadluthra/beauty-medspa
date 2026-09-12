@@ -36,12 +36,12 @@
  * a separate row below the tabs -- a row that only exists for a filter
  * used to push every tab's content down an extra row even when that tab
  * had nothing to do with filtering. Both `patientFilters` (All Patients)
- * and `todayProviderId` (Today's Appointments) are owned here rather than
+ * and `todayFilters` (Today's Appointments) are owned here rather than
  * inside their respective table components specifically so their filter
- * controls (`PatientFilters`, `ProviderFilterSelect`) can be rendered in
- * this one shared row while the table components themselves stay plain
+ * controls (`PatientFilters`, `ScheduleFilters`) can be rendered in this
+ * one shared row while the table components themselves stay plain
  * controlled consumers of that same state. `PatientFilters` and
- * `ProviderFilterSelect` deliberately share one visual style
+ * `ScheduleFilters` deliberately share one visual style
  * (`FILTER_PILL_CLASSNAME`) now that they can appear in the same row, so
  * they read as one consistent control, not two different-looking ones.
  */
@@ -52,11 +52,11 @@ import { Suspense, useState } from "react";
 import { CalendarView } from "@/components/patients/CalendarView";
 import { PatientFilters } from "@/components/patients/PatientFilters";
 import { PatientTable } from "@/components/patients/PatientTable";
-import { ProviderFilterSelect } from "@/components/patients/ProviderFilterSelect";
 import { RebookingOpportunitiesTable } from "@/components/patients/RebookingOpportunitiesTable";
+import { ScheduleFilters } from "@/components/patients/ScheduleFilters";
 import { TodaysAppointmentsTable } from "@/components/patients/TodaysAppointmentsTable";
 import { WalkInAvailability } from "@/components/patients/WalkInAvailability";
-import type { PatientQueryParams } from "@/lib/api";
+import type { PatientQueryParams, ScheduleFilterParams } from "@/lib/api";
 import { TABS, type TabKey } from "@/lib/tabs";
 
 const PATIENT_FILTERS_PAGE_SIZE = 25;
@@ -100,7 +100,7 @@ function PatientsPageContent() {
     page_size: PATIENT_FILTERS_PAGE_SIZE,
     sort: "name",
   });
-  const [todayProviderId, setTodayProviderId] = useState<string | undefined>(undefined);
+  const [todayFilters, setTodayFilters] = useState<ScheduleFilterParams>({});
 
   return (
     <div className="space-y-4">
@@ -132,7 +132,12 @@ function PatientsPageContent() {
           ))}
         </div>
 
-        {tab === "today" && <ProviderFilterSelect value={todayProviderId} onChange={setTodayProviderId} />}
+        {tab === "today" && (
+          <ScheduleFilters
+            filters={todayFilters}
+            onChange={(next) => setTodayFilters((prev) => ({ ...prev, ...next }))}
+          />
+        )}
         {tab === "all" && (
           <PatientFilters
             filters={patientFilters}
@@ -141,7 +146,12 @@ function PatientsPageContent() {
         )}
       </div>
 
-      {tab === "today" && <TodaysAppointmentsTable providerId={todayProviderId} />}
+      {tab === "today" && (
+        <TodaysAppointmentsTable
+          filters={todayFilters}
+          onFiltersChange={(next) => setTodayFilters((prev) => ({ ...prev, ...next }))}
+        />
+      )}
       {tab === "calendar" && <CalendarView />}
       {tab === "walkin" && <WalkInAvailability />}
       {tab === "all" && (
