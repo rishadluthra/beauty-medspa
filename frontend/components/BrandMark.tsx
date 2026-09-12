@@ -11,6 +11,11 @@
  * spa/wellness-appropriate mark using clean geometric shapes and generous
  * negative space, in keeping with the calm, minimal style the spec's
  * design reference calls for.
+ *
+ * `app/icon.svg` (the browser tab favicon) draws this exact same shape --
+ * a plain static SVG file can't import/render this component directly, so
+ * its geometry/colors are copied there instead. Keep the two in sync if
+ * this mark ever changes.
  */
 export function BrandMark({ className = "h-7 w-7" }: { className?: string }) {
   return (
