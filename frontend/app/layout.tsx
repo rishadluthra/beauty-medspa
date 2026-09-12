@@ -12,6 +12,7 @@ import Link from "next/link";
 
 import { BrandMark } from "@/components/BrandMark";
 import { GlobalPatientSearch } from "@/components/GlobalPatientSearch";
+import { MobileNavMenu } from "@/components/MobileNavMenu";
 import { NavLinks } from "@/components/NavLinks";
 
 import { Providers } from "./providers";
@@ -62,27 +63,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {/*
                 Links back to Today's Appointments -- the front desk's
                 actual home base -- like a wordmark conventionally does.
-                The wordmark text itself hides below `sm` (leaving just the
-                logo mark) -- at phone width there isn't room for the full
-                name AND a search control AND both nav links without
-                something overflowing the pill; the mark alone still
-                identifies the brand, matching how the search label below
-                already collapses to icon-only at the same breakpoint.
+                The wordmark text now stays visible at every width
+                (previously hidden below `sm`, leaving just the logo mark,
+                per direct feedback that the name should always show) --
+                that's only affordable now that the mobile right-hand group
+                is a single hamburger button (`MobileNavMenu`) instead of a
+                search icon plus both nav links competing for the same row.
               */}
               <Link
                 href="/patients?tab=today"
                 className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight transition-opacity hover:opacity-80"
               >
                 <BrandMark />
-                <span className="hidden sm:inline">Beauty Med Spa</span>
+                <span>Beauty Med Spa</span>
               </Link>
 
               {/*
                 The flexible middle column only exists at `sm` and up --
-                below that, `GlobalPatientSearch` moves into the right-hand
-                group instead (still reachable, just icon-only, matching
-                its own pre-existing mobile collapse), since there isn't
-                enough width for a real middle column on a phone screen.
+                below that, search moves into `MobileNavMenu`'s dropdown
+                instead (see below), since there isn't enough width for a
+                real middle column on a phone screen.
               */}
               <div className="hidden flex-1 px-2 sm:flex sm:max-w-xs sm:px-4">
                 <GlobalPatientSearch />
@@ -100,12 +100,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 what this section is called in the nav. `NavLinks`
                 highlights whichever of these actually matches the
                 current route.
+
+                Below `sm`, these inline links and the standalone search
+                icon are both replaced by `MobileNavMenu` -- a single
+                hamburger button opening a dropdown with search and both
+                links as full-width rows, matching the Decoda Health
+                mobile-nav reference this was modeled on (full wordmark,
+                one menu button, nothing else competing for room).
               */}
               <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-                <div className="w-9 sm:hidden">
-                  <GlobalPatientSearch />
+                <div className="hidden items-center gap-4 sm:flex">
+                  <NavLinks />
                 </div>
-                <NavLinks />
+                <MobileNavMenu />
               </div>
             </nav>
           </div>

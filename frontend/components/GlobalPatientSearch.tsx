@@ -51,7 +51,17 @@ function SearchIcon() {
   );
 }
 
-export function GlobalPatientSearch() {
+interface Props {
+  /**
+   * "bar" (default): the pill trigger this has always been, used in the nav's `sm`+
+   * middle column. "menuItem": a full-width block row with the label always visible
+   * (no responsive hide) -- used inside `MobileNavMenu`'s dropdown, which is only ever
+   * rendered below `sm` in the first place, so the label always has room to show there.
+   */
+  variant?: "bar" | "menuItem";
+}
+
+export function GlobalPatientSearch({ variant = "bar" }: Props) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -116,10 +126,14 @@ export function GlobalPatientSearch() {
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label="Search patients"
-        className="flex w-full items-center justify-center gap-2 rounded-full border border-brand-dark/10 bg-brand-dark/5 px-2 py-2 text-sm text-brand-dark/60 transition-colors hover:border-brand-gold hover:text-brand-dark sm:justify-start sm:px-4"
+        className={
+          variant === "menuItem"
+            ? "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-brand-dark/70 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark"
+            : "flex w-full items-center justify-center gap-2 rounded-full border border-brand-dark/10 bg-brand-dark/5 px-2 py-2 text-sm text-brand-dark/60 transition-colors hover:border-brand-gold hover:text-brand-dark sm:justify-start sm:px-4"
+        }
       >
         <SearchIcon />
-        <span className="hidden truncate sm:inline">Search patients…</span>
+        <span className={variant === "menuItem" ? "truncate" : "hidden truncate sm:inline"}>Search patients…</span>
       </button>
 
       {isOpen && createPortal(
