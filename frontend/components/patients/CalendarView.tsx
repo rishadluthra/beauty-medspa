@@ -11,12 +11,16 @@
  * own Prev/Next-day navigation and a "Back to Calendar" link, reusing the
  * same `ScheduleTable` as Today's Appointments for the actual schedule.
  *
- * Both of this component's own containers (the month grid card and the Day
- * View's header bar) use the same opaque cream card treatment as every
+ * The month grid card uses the same opaque cream card treatment as every
  * other card in this app (`ScheduleTable`, `KpiCard`, etc.) -- a frosted-
  * glass version was tried first (matching the nav's own translucent look)
- * but read as washed-out and out of place against this component's own
- * warm heatmap-tinted cells, so it was reverted back to solid `bg-brand-bg`.
+ * but read as washed-out and out of place, so it was reverted back to solid
+ * `bg-brand-bg`. The Day View header is deliberately NOT a card at all --
+ * an early version wrapped "Back to Calendar / date / Prev-Next Day" in one
+ * and repeated the date again as plain text right below it ("Schedule for
+ * Dec 3, 2025"), which was both a redundant second date and an unnecessary
+ * box; it's now a plain control row (matching "Schedule for ..."'s own
+ * previous transparent styling) with no repeated date text underneath.
  *
  * The grid opens on the dataset's reference "today" (see the backend's
  * `get_reference_now`) rather than the real current month, which would be
@@ -111,22 +115,22 @@ export function CalendarView() {
   if (selectedDate) {
     return (
       <div className="space-y-3">
-        <div className={`flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 ${CALENDAR_CARD}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <button
             type="button"
-            className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/10 hover:text-brand-dark"
+            className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-bg/70 transition-colors hover:bg-brand-bg/10 hover:text-brand-bg"
             onClick={() => setSelectedDate(undefined)}
           >
             ‹ Back to Calendar
           </button>
-          <h2 className="order-first w-full text-center text-base font-semibold sm:order-none sm:w-auto sm:text-lg">
+          <h2 className="order-first w-full text-center text-base font-semibold text-brand-bg sm:order-none sm:w-auto sm:text-lg">
             {formatDayHeading(selectedDate)}
           </h2>
           <div className="flex items-center gap-1">
             <button
               type="button"
               aria-label="Previous day"
-              className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/10 hover:text-brand-dark"
+              className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-bg/70 transition-colors hover:bg-brand-bg/10 hover:text-brand-bg"
               onClick={() => goToDay(shiftDay(selectedDate, -1))}
             >
               ‹ Prev Day
@@ -134,7 +138,7 @@ export function CalendarView() {
             <button
               type="button"
               aria-label="Next day"
-              className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/10 hover:text-brand-dark"
+              className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-bg/70 transition-colors hover:bg-brand-bg/10 hover:text-brand-bg"
               onClick={() => goToDay(shiftDay(selectedDate, 1))}
             >
               Next Day ›
@@ -142,8 +146,7 @@ export function CalendarView() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-brand-bg/70">Schedule for {formatDate(selectedDate)}</p>
+        <div className="flex justify-end">
           <ScheduleFilters
             filters={filters}
             onChange={(next) => {
