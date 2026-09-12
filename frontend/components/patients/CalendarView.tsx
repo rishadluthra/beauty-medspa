@@ -28,6 +28,17 @@
  * highlighted on the grid as "Today," but landing on the page does NOT
  * auto-open its Day View; Month view is always the entry point, matching a
  * real calendar app instead of the previous auto-expanding-list behavior.
+ *
+ * `selectedDate`/`onSelectedDateChange` and `filters`/`onFiltersChange` are
+ * controlled from `app/patients/page.tsx`, not owned locally, mirroring
+ * exactly how `TodaysAppointmentsTable` is wired -- every other tab renders
+ * its own filter button in the shared tab-bar row alongside "Today's
+ * Appointments"/"Calendar"/etc. (see `page.tsx`), not in its own separate
+ * row below the tabs. An earlier version kept `selectedDate`/`filters`
+ * entirely local to this component and rendered its own `ScheduleFilters`
+ * row underneath the Day View header, which put the Filters button in a
+ * different place than every other tab and broke that shared layout
+ * convention -- reported directly, fixed by lifting both up to the page.
  */
 
 import { useEffect, useState } from "react";
@@ -37,11 +48,17 @@ import { api, type ScheduleFilterParams } from "@/lib/api";
 import { APPOINTMENT_STATUS_COLORS } from "@/lib/chartColors";
 import { formatDate, formatDayHeading, formatMonthLabel, formatTime, parseISODate, scheduleFilterSuffix } from "@/lib/format";
 
-import { ScheduleFilters } from "./ScheduleFilters";
 import { ScheduleTable } from "./ScheduleTable";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_PAGE_SIZE = 100;
+
+interface Props {
+  selectedDate: string | undefined;
+  onSelectedDateChange: (date: string | undefined) => void;
+  filters: ScheduleFilterParams;
+  onFiltersChange: (next: Partial<ScheduleFilterParams>) => void;
+}
 
 /** The app's standard opaque card treatment, matching `ScheduleTable`/`KpiCard`/etc. -- used for both of this component's own chrome pieces. */
 const CALENDAR_CARD = "rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10";
@@ -65,15 +82,14 @@ function shiftDay(dateStr: string, delta: number): string {
   return `${year}-${month}-${day}`;
 }
 
-export function CalendarView() {
+export function CalendarView({ selectedDate, onSelectedDateChange, filters, onFiltersChange }: Props) {
   // `undefined` until the first response tells us the dataset's actual
   // reference month -- only then does Prev/Next month have a real starting
-  // point to move from. `selectedDate` stays `undefined` until a day is
-  // actually clicked -- Month view, never Day View, is the landing state.
+  // point to move from. `selectedDate` (a prop) stays `undefined` until a
+  // day is actually clicked -- Month view, never Day View, is the landing
+  // state.
   const [month, setMonth] = useState<string | undefined>(undefined);
-  const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
   const [dayPage, setDayPage] = useState(1);
-  const [filters, setFilters] = useState<ScheduleFilterParams>({});
   const { provider_id: providerId, service_id: serviceId, sort, sort_dir: sortDir } = filters;
 
   const { data: calendar, isLoading: calendarLoading, isError: calendarError } = useQuery({
@@ -98,17 +114,13 @@ export function CalendarView() {
 
   /** Opens the Day View for `date`, keeping `month` in sync so "Back to Calendar" (or crossing a month boundary via Prev/Next Day) always lands on the right month. */
   function goToDay(date: string) {
-    setSelectedDate(date);
+    onSelectedDateChange(date);
     setMonth(date.slice(0, 7));
     setDayPage(1);
   }
 
   function handleSort(key: string) {
-    setFilters((prev) => (
-      prev.sort === key
-        ? { ...prev, sort: key, sort_dir: prev.sort_dir === "asc" ? "desc" : "asc" }
-        : { ...prev, sort: key, sort_dir: "asc" }
-    ));
+    onFiltersChange(sort === key ? { sort: key, sort_dir: sortDir === "asc" ? "desc" : "asc" } : { sort: key, sort_dir: "asc" });
     setDayPage(1);
   }
 
@@ -119,7 +131,7 @@ export function CalendarView() {
           <button
             type="button"
             className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-bg/70 transition-colors hover:bg-brand-bg/10 hover:text-brand-bg"
-            onClick={() => setSelectedDate(undefined)}
+            onClick={() => onSelectedDateChange(undefined)}
           >
             ‹ Back to Calendar
           </button>
@@ -146,16 +158,6 @@ export function CalendarView() {
           </div>
         </div>
 
-        <div className="flex justify-end">
-          <ScheduleFilters
-            filters={filters}
-            onChange={(next) => {
-              setFilters((prev) => ({ ...prev, ...next }));
-              setDayPage(1);
-            }}
-          />
-        </div>
-
         <ScheduleTable
           data={daySchedule}
           isLoading={dayLoading}
@@ -173,7 +175,7 @@ export function CalendarView() {
           onSort={handleSort}
           date={selectedDate}
           hasActiveFilters={!!providerId || !!serviceId}
-          onClearFilters={() => setFilters((prev) => ({ ...prev, provider_id: undefined, service_id: undefined }))}
+          onClearFilters={() => onFiltersChange({ provider_id: undefined, service_id: undefined })}
         />
       </div>
     );

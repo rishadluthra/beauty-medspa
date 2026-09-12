@@ -35,15 +35,19 @@
  * aligned against the left-aligned tab selector via `justify-between`, NOT
  * a separate row below the tabs -- a row that only exists for a filter
  * used to push every tab's content down an extra row even when that tab
- * had nothing to do with filtering. Both `patientFilters` (All Patients)
- * and `todayFilters` (Today's Appointments) are owned here rather than
- * inside their respective table components specifically so their filter
- * controls (`PatientFilters`, `ScheduleFilters`) can be rendered in this
- * one shared row while the table components themselves stay plain
- * controlled consumers of that same state. `PatientFilters` and
- * `ScheduleFilters` deliberately share one visual style
- * (`FILTER_PILL_CLASSNAME`) now that they can appear in the same row, so
- * they read as one consistent control, not two different-looking ones.
+ * had nothing to do with filtering. `patientFilters` (All Patients),
+ * `todayFilters` (Today's Appointments), and `calendarFilters` (Calendar's
+ * Day View) are all owned here rather than inside their respective table
+ * components specifically so their filter controls (`PatientFilters`,
+ * `ScheduleFilters`) can be rendered in this one shared row while the table
+ * components themselves stay plain controlled consumers of that same
+ * state. `PatientFilters` and `ScheduleFilters` deliberately share one
+ * visual style (`FILTER_PILL_CLASSNAME`) now that they can appear in the
+ * same row, so they read as one consistent control, not two different-
+ * looking ones. `calendarSelectedDate` is lifted here too (not just
+ * `calendarFilters`) purely so this row knows whether Calendar is
+ * currently showing its Day View -- filtering only makes sense once a
+ * specific day's schedule is on screen, not the month grid itself.
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
@@ -101,6 +105,8 @@ function PatientsPageContent() {
     sort: "name",
   });
   const [todayFilters, setTodayFilters] = useState<ScheduleFilterParams>({});
+  const [calendarSelectedDate, setCalendarSelectedDate] = useState<string | undefined>(undefined);
+  const [calendarFilters, setCalendarFilters] = useState<ScheduleFilterParams>({});
 
   return (
     <div className="space-y-4">
@@ -138,6 +144,12 @@ function PatientsPageContent() {
             onChange={(next) => setTodayFilters((prev) => ({ ...prev, ...next }))}
           />
         )}
+        {tab === "calendar" && calendarSelectedDate && (
+          <ScheduleFilters
+            filters={calendarFilters}
+            onChange={(next) => setCalendarFilters((prev) => ({ ...prev, ...next }))}
+          />
+        )}
         {tab === "all" && (
           <PatientFilters
             filters={patientFilters}
@@ -152,7 +164,14 @@ function PatientsPageContent() {
           onFiltersChange={(next) => setTodayFilters((prev) => ({ ...prev, ...next }))}
         />
       )}
-      {tab === "calendar" && <CalendarView />}
+      {tab === "calendar" && (
+        <CalendarView
+          selectedDate={calendarSelectedDate}
+          onSelectedDateChange={setCalendarSelectedDate}
+          filters={calendarFilters}
+          onFiltersChange={(next) => setCalendarFilters((prev) => ({ ...prev, ...next }))}
+        />
+      )}
       {tab === "walkin" && <WalkInAvailability />}
       {tab === "all" && (
         <PatientTable
