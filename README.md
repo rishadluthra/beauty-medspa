@@ -1,6 +1,6 @@
 # Beauty Med Spa Patient Dashboard
 
-A read-only patient dashboard for Beauty Med Spa: a filterable/sortable patient table and an analytics dashboard, built on top of the client's existing `seed_data/` JSON fixtures.
+A read-only patient dashboard for Beauty Med Spa, built on top of the client's existing `seed_data/` JSON fixtures. The Front Desk page covers Today's Appointments, a Calendar view, Walk-In Availability, a filterable/sortable All Patients table (with per-column-type operators — text/number/date/enum), and Rebooking Opportunities, plus patient/appointment detail pages. The Analytics page covers the KPIs and visualizations a manager needs (revenue, patient demographics, marketing source, top services, provider utilization, retention/cancellation) plus an ad-hoc custom-graph builder and saveable custom views.
 
 **Live app:** https://frontend-khaki-five-88.vercel.app
 **Backend API:** https://backend-production-1d3cc.up.railway.app
@@ -53,7 +53,6 @@ Frontend has no automated test suite (see Future Enhancements) — verify manual
 
 ## Future Enhancements
 
-- A patient detail page/endpoint (the spec named only the Patient Table and Analytics Dashboard as required pages).
 - The actual AI-driven natural-language query service — the current repository layer (`backend/app/repositories/`) is structured so this can call the same typed, parameterized functions the REST endpoints use, rather than needing raw SQL access.
 - An automated frontend test suite (component/interaction tests) — currently relies on manual verification given the project deadline.
 - Materialized views or precomputed summary tables for the analytics endpoints, if data volume grows well beyond the current ~4,000 patients.
