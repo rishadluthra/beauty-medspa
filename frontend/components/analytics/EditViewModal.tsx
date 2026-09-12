@@ -184,14 +184,19 @@ export function EditViewModal({
           ) : (
             <div className="mt-4 flex shrink-0 items-center justify-between gap-2">
               {mode === "view" ? (
-                // A real button, not bare text -- red-tinted frosted glass
-                // (matching the app's translucent menu-bar treatment, tinted
-                // toward `coral` instead of the neutral/gold used elsewhere)
-                // so this reads as a destructive action, not decoration.
+                // A real button, not bare text -- coral-tinted instead of the
+                // neutral/gold used elsewhere, so this reads as a destructive
+                // action, not decoration. Flat, no shadow/blur -- an earlier
+                // version added `shadow-lg shadow-coral/20 backdrop-blur-xl`
+                // (matching the app's frosted-glass nav), but Cancel/Save
+                // right next to it are plain flat buttons with neither, so
+                // the shadow's blur radius made this one alone look both
+                // oddly glowing and visually larger despite sharing the
+                // exact same padding/text size as its neighbors.
                 <button
                   type="button"
                   onClick={() => setConfirmingDeleteView(true)}
-                  className="rounded-full border border-coral bg-coral/20 px-4 py-1.5 text-sm font-medium text-coral shadow-lg shadow-coral/20 backdrop-blur-xl transition-colors hover:bg-coral/30"
+                  className="rounded-full border border-coral bg-coral/20 px-4 py-1.5 text-sm font-medium text-coral transition-colors hover:bg-coral/30"
                 >
                   Delete View
                 </button>

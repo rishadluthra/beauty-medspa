@@ -25,7 +25,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 
 import { estimateAxisWidth, formatPeriodTick, periodAxisInterval } from "@/lib/chartAxis";
 import { CATEGORICAL_PALETTE } from "@/lib/chartColors";
-import { formatLabel } from "@/lib/format";
+import { formatLabel, formatMonthLabel } from "@/lib/format";
 import type { CustomReport } from "@/lib/types";
 
 import { GraphBadge } from "./GraphBadge";
@@ -69,14 +69,24 @@ interface TooltipContentProps {
  * A translucent, frosted-glass tooltip -- matching the app's own menu bar
  * styling (`border-brand-gold/10 bg-brand-bg/70 backdrop-blur-xl`) -- per
  * direct request, replacing Recharts' plain opaque-white default box.
+ *
+ * Two things fixed per direct feedback: the label used the raw "2025-11"
+ * period key verbatim (reusing `formatMonthLabel`, already used for the
+ * Calendar view's own month heading, for a real "November 2025" instead);
+ * and the series list rendered in whatever order Recharts' `payload` came
+ * in (effectively alphabetical, by legend order) rather than by value --
+ * for a report broken down by a dimension like service or provider, the
+ * whole point of glancing at a tooltip is "what's the biggest one here,"
+ * which alphabetical order doesn't answer at a glance.
  */
 function GlassTooltip({ active, label, payload, formatValue }: TooltipContentProps) {
   if (!active || !payload?.length) return null;
+  const sortedPayload = [...payload].sort((a, b) => b.value - a.value);
   return (
     <div className="max-w-[220px] rounded-2xl border border-brand-gold/10 bg-brand-bg/80 px-4 py-3 text-sm text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl">
-      <p className="mb-1.5 font-medium">{label}</p>
+      <p className="mb-1.5 font-medium">{label ? formatMonthLabel(label) : label}</p>
       <div className="space-y-1">
-        {payload.map((entry) => (
+        {sortedPayload.map((entry) => (
           <p key={entry.dataKey} style={{ color: entry.color }}>
             {entry.dataKey}: {formatValue(entry.value)}
           </p>
