@@ -90,7 +90,16 @@ export function PatientFilters({ filters, onChange }: Props) {
   }, []);
 
   return (
-    <div ref={containerRef} className="relative">
+    // `ml-auto` keeps this control pinned to the tab row's right edge even when it wraps
+    // onto its own line at phone width (the row above uses `flex-wrap`, and when the tab
+    // pills alone fill a whole line, this button was the sole item left on the next line
+    // -- flexbox places a lone wrapped item at that line's START, not its end, without
+    // this). That mattered because the dropdown card below is `absolute right-0`,
+    // anchored to THIS element's own right edge -- with the button sitting at the row's
+    // left edge instead of its right, the card's fixed 22rem width extended almost
+    // entirely off the left side of the viewport (confirmed via a real mobile screenshot:
+    // every field showed only its last few characters, the rest clipped off-screen).
+    <div ref={containerRef} className="relative ml-auto">
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
