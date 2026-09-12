@@ -12,15 +12,11 @@
  * same `ScheduleTable` as Today's Appointments for the actual schedule.
  *
  * Both of this component's own containers (the month grid card and the Day
- * View's header bar) use the same frosted-glass treatment as the app's nav
- * (`border-brand-gold/10 bg-brand-bg/50 backdrop-blur-xl`, see
- * `app/layout.tsx`) instead of an opaque cream card -- everything else on
- * this dark-themed page floats translucently over it; the Calendar's own
- * chrome previously stood out as the one solid-white block on the page.
- * `ScheduleTable`/`ScheduleFilters` underneath are intentionally left as
- * their normal opaque selves -- they're shared with every other schedule
- * tab, and restyling them here would make Calendar's table disagree with
- * Today's Appointments' identical one.
+ * View's header bar) use the same opaque cream card treatment as every
+ * other card in this app (`ScheduleTable`, `KpiCard`, etc.) -- a frosted-
+ * glass version was tried first (matching the nav's own translucent look)
+ * but read as washed-out and out of place against this component's own
+ * warm heatmap-tinted cells, so it was reverted back to solid `bg-brand-bg`.
  *
  * The grid opens on the dataset's reference "today" (see the backend's
  * `get_reference_now`) rather than the real current month, which would be
@@ -43,8 +39,8 @@ import { ScheduleTable } from "./ScheduleTable";
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_PAGE_SIZE = 100;
 
-/** The app's shared frosted-glass container treatment (see `app/layout.tsx`'s nav) -- used for both of this component's own chrome pieces so neither reads as a plain white card on the dark page background. */
-const GLASS_CARD = "rounded-2xl border border-brand-gold/10 bg-brand-bg/50 text-brand-dark shadow-lg shadow-brand-gold/10 backdrop-blur-xl";
+/** The app's standard opaque card treatment, matching `ScheduleTable`/`KpiCard`/etc. -- used for both of this component's own chrome pieces. */
+const CALENDAR_CARD = "rounded-2xl border border-brand-gold/10 bg-brand-bg text-brand-dark shadow-lg shadow-brand-gold/10";
 
 /** Shifts a "YYYY-MM" month string by `delta` months (can cross a year boundary either way). */
 function shiftMonth(month: string, delta: number): string {
@@ -115,7 +111,7 @@ export function CalendarView() {
   if (selectedDate) {
     return (
       <div className="space-y-3">
-        <div className={`flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 ${GLASS_CARD}`}>
+        <div className={`flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 ${CALENDAR_CARD}`}>
           <button
             type="button"
             className="rounded-full px-2.5 py-1 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/10 hover:text-brand-dark"
@@ -184,7 +180,7 @@ export function CalendarView() {
   const leadingBlanks = calendar ? parseISODate(`${calendar.month}-01`).getDay() : 0;
 
   return (
-    <div className={`p-3 sm:p-4 ${GLASS_CARD}`}>
+    <div className={`p-3 sm:p-4 ${CALENDAR_CARD}`}>
       <div className="mb-2 flex items-center justify-between">
         <button
           type="button"
