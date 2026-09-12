@@ -17,6 +17,7 @@ from app.models import Appointment, AppointmentService, Patient, Payment, Provid
 from app.schemas.patient import (
     AppointmentDetail,
     AppointmentServiceItem,
+    CalendarAppointmentPreview,
     CalendarDayCount,
     CalendarMonthResponse,
     PatientDetail,
@@ -814,17 +815,24 @@ async def list_schedule_for_date(
     )
 
 
+CALENDAR_DAY_PREVIEW_LIMIT = 3
+
+
 async def get_calendar_month(
     db: AsyncSession, year: int | None = None, month: int | None = None,
 ) -> CalendarMonthResponse:
     """Day-by-day scheduled (non-cancelled) service counts for one calendar month, for the
-    Calendar view's density grid.
+    Calendar view's density grid -- plus, per day, a capped preview of its earliest
+    appointments (`CALENDAR_DAY_PREVIEW_LIMIT`) for the grid's Google-Calendar-style
+    truncated event chips.
 
     Counts `AppointmentService` rows (not `Appointment`s), consistent with
     `list_todays_appointments`/`list_schedule_for_date` -- a multi-service appointment
     contributes one count per service, matching what a front desk agent would actually see
     if they drilled into that day. Every day of the month is included, even ones with zero
     scheduled services, so the frontend can render a complete grid without inferring gaps.
+    The preview list uses the identical "exclude cancelled" filter as `count`, so a day's
+    chips and its "+N more" math (`count - len(appointments)`) never disagree.
 
     `year`/`month` default to the reference "today"'s own month (see
     `get_reference_now`) when omitted, so the calendar opens on the month that
@@ -850,10 +858,39 @@ async def get_calendar_month(
     )
     counts_by_day = {row.day: row.count for row in (await db.execute(counts_query)).all()}
 
+    # A whole month's worth of scheduled services is at most a few hundred rows against
+    # this dataset's actual volume (~6,000 appointments total) -- cheap enough to fetch in
+    # one query and slice per day in Python, rather than a per-day-limited window query.
+    preview_query = (
+        select(
+            day_column.label("day"), AppointmentService.id, Patient.first_name, Patient.last_name,
+            AppointmentService.start, Appointment.status,
+        )
+        .join(Appointment, Appointment.id == AppointmentService.appointment_id)
+        .join(Patient, Patient.id == Appointment.patient_id)
+        .where(
+            Appointment.status != "cancelled",
+            AppointmentService.start >= month_start,
+            AppointmentService.start < next_month_start,
+        )
+        .order_by(AppointmentService.start.asc(), AppointmentService.id.asc())
+    )
+    previews_by_day: dict[date, list[CalendarAppointmentPreview]] = {}
+    for day, service_id, first_name, last_name, start, status in (await db.execute(preview_query)).all():
+        bucket = previews_by_day.setdefault(day, [])
+        if len(bucket) < CALENDAR_DAY_PREVIEW_LIMIT:
+            bucket.append(CalendarAppointmentPreview(
+                appointment_service_id=service_id, patient_name=f"{first_name} {last_name}",
+                start=start, status=status,
+            ))
+
     days = []
     current = month_start
     while current < next_month_start:
-        days.append(CalendarDayCount(date=current, count=counts_by_day.get(current, 0)))
+        days.append(CalendarDayCount(
+            date=current, count=counts_by_day.get(current, 0),
+            appointments=previews_by_day.get(current, []),
+        ))
         current += timedelta(days=1)
 
     return CalendarMonthResponse(month=f"{year:04d}-{month:02d}", days=days, reference_date=reference_now.date())

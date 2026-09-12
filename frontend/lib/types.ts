@@ -296,10 +296,24 @@ export interface RebookingOpportunitiesResponse {
   reference_date: string;
 }
 
-/** One day's scheduled (non-cancelled) service count, for the Calendar view's density grid. */
+/** One scheduled service's preview info, for the Calendar month grid's per-day chip list. */
+export interface CalendarAppointmentPreview {
+  appointment_service_id: number;
+  patient_name: string;
+  start: string;
+  status: string;
+}
+
+/**
+ * One day's scheduled (non-cancelled) service count, for the Calendar view's density
+ * grid, plus a capped preview of that day's earliest appointments for the grid's
+ * Google-Calendar-style truncated event chips. `count` is always the true total, even
+ * when `appointments.length < count` -- render "+N more" from the difference.
+ */
 export interface CalendarDayCount {
   date: string;
   count: number;
+  appointments: CalendarAppointmentPreview[];
 }
 
 /** Response for `GET /api/patients/calendar`: one month's day-by-day appointment density. */

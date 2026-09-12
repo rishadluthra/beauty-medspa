@@ -964,6 +964,48 @@ async def test_get_calendar_month_returns_every_day_with_correct_counts(db_sessi
     assert date(2026, 2, 1) not in counts_by_date  # outside the requested month
 
 
+async def test_get_calendar_month_previews_are_capped_ordered_and_exclude_cancelled(db_session):
+    """Covers the month grid's per-day chip preview list:
+
+    - A day with more scheduled services than `CALENDAR_DAY_PREVIEW_LIMIT` (3) still
+      reports its true `count`, but `appointments` is capped at 3 -- the frontend renders
+      "+N more" from the difference.
+    - The capped list keeps the *earliest* services chronologically, not an arbitrary 3.
+    - A cancelled appointment never appears in the preview, matching `count`'s own
+      "exclude cancelled" semantics -- so a day's chips and its count never disagree.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1", first_name="Ann", last_name="Adams"),
+        make_patient(id="pat_2", first_name="Bea", last_name="Brooks"),
+        make_patient(id="pat_3", first_name="Cid", last_name="Cole"),
+        make_patient(id="pat_4", first_name="Dee", last_name="Diaz"),
+        make_provider(), make_service(),
+        make_appointment(id="apt_1", patient_id="pat_1", status="confirmed"),
+        make_appointment(id="apt_2", patient_id="pat_2", status="confirmed"),
+        make_appointment(id="apt_3", patient_id="pat_3", status="confirmed"),
+        make_appointment(id="apt_4", patient_id="pat_4", status="confirmed"),
+        make_appointment(id="apt_5_cancelled", patient_id="pat_1", status="cancelled"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_3", start=datetime(2026, 1, 5, 14, 0), end=datetime(2026, 1, 5, 14, 30)),
+        make_appointment_service(appointment_id="apt_1", start=datetime(2026, 1, 5, 9, 0), end=datetime(2026, 1, 5, 9, 30)),
+        make_appointment_service(appointment_id="apt_4", start=datetime(2026, 1, 5, 16, 0), end=datetime(2026, 1, 5, 16, 30)),
+        make_appointment_service(appointment_id="apt_2", start=datetime(2026, 1, 5, 11, 0), end=datetime(2026, 1, 5, 11, 30)),
+        make_appointment_service(appointment_id="apt_5_cancelled", start=datetime(2026, 1, 5, 8, 0), end=datetime(2026, 1, 5, 8, 30)),
+    ])
+    await db_session.commit()
+
+    result = await get_calendar_month(db_session, year=2026, month=1)
+
+    day5 = next(day for day in result.days if day.date == date(2026, 1, 5))
+    assert day5.count == 4  # true total, including the one beyond the preview cap
+    assert [p.patient_name for p in day5.appointments] == ["Ann Adams", "Bea Brooks", "Cid Cole"]  # earliest 3, chronological
+    assert len(day5.appointments) == 3  # capped even though 4 non-cancelled services exist
+    assert all(p.patient_name != "Dee Diaz" for p in day5.appointments)  # the 4th (16:00) isn't in the top 3
+    assert all(p.status == "confirmed" for p in day5.appointments)  # cancelled apt_5 never appears
+
+
 async def test_get_calendar_month_defaults_to_the_reference_months(db_session):
     """Omitting year/month must default to the dataset's reference "today" own month --
     not the real current calendar month, which would be empty against this frozen dataset.

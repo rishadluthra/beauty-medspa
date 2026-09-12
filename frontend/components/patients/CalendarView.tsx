@@ -1,23 +1,29 @@
 "use client";
 
 /**
- * Calendar view — a month grid of appointment density (how busy each day
- * is), so a front desk agent can spot a heavy day at a glance before
- * drilling into it, rather than paging through Today's/Upcoming
- * Appointments day by day. Clicking a day shows that day's full schedule
- * below the grid, reusing the same `ScheduleTable` as Today's Appointments.
+ * Calendar view — a Google-Calendar-style month grid: each day is both a
+ * density heatmap (how busy that day is, by background intensity) and a
+ * truncated preview of its earliest appointments (patient + time, dot-
+ * colored by status), so a front desk agent can spot a heavy day and see
+ * roughly who's on it before drilling in. Clicking a day switches the whole
+ * view into a full Day View (not an inline list below the grid) with its
+ * own Prev/Next-day navigation and a "Back to Calendar" link, reusing the
+ * same `ScheduleTable` as Today's Appointments for the actual schedule.
  *
  * The grid opens on the dataset's reference "today" (see the backend's
- * `_get_upcoming_reference_now`) rather than the real current month, which
- * would be empty against this frozen seed dataset -- and that reference day
- * is highlighted on the grid as "Today" so it's clear which day that is.
+ * `get_reference_now`) rather than the real current month, which would be
+ * empty against this frozen seed dataset -- and that reference day is
+ * highlighted on the grid as "Today," but landing on the page does NOT
+ * auto-open its Day View; Month view is always the entry point, matching a
+ * real calendar app instead of the previous auto-expanding-list behavior.
  */
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, type ScheduleFilterParams } from "@/lib/api";
-import { formatDate, formatMonthLabel, parseISODate, scheduleFilterSuffix } from "@/lib/format";
+import { APPOINTMENT_STATUS_COLORS } from "@/lib/chartColors";
+import { formatDate, formatDayHeading, formatMonthLabel, formatTime, parseISODate, scheduleFilterSuffix } from "@/lib/format";
 
 import { ScheduleFilters } from "./ScheduleFilters";
 import { ScheduleTable } from "./ScheduleTable";
@@ -34,10 +40,21 @@ function shiftMonth(month: string, delta: number): string {
   return `${newYear}-${String(newMonth).padStart(2, "0")}`;
 }
 
+/** Shifts a "YYYY-MM-DD" date string by `delta` days, crossing month/year boundaries freely. */
+function shiftDay(dateStr: string, delta: number): string {
+  const date = parseISODate(dateStr);
+  date.setDate(date.getDate() + delta);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function CalendarView() {
   // `undefined` until the first response tells us the dataset's actual
-  // reference month/day -- only then do Prev/Next and day-selection have a
-  // real starting point to move from.
+  // reference month -- only then does Prev/Next month have a real starting
+  // point to move from. `selectedDate` stays `undefined` until a day is
+  // actually clicked -- Month view, never Day View, is the landing state.
   const [month, setMonth] = useState<string | undefined>(undefined);
   const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
   const [dayPage, setDayPage] = useState(1);
@@ -49,13 +66,11 @@ export function CalendarView() {
     queryFn: () => api.getCalendarMonth({ month }),
   });
 
-  // Seed the initial month/selected-day from the server's own default
-  // reference date, exactly once -- afterward, Prev/Next and clicking a
-  // day fully own these values.
+  // Seed the initial month from the server's own default reference month,
+  // exactly once -- afterward, Prev/Next month fully owns this value.
   useEffect(() => {
     if (calendar && month === undefined) setMonth(calendar.month);
-    if (calendar && selectedDate === undefined) setSelectedDate(calendar.reference_date);
-  }, [calendar, month, selectedDate]);
+  }, [calendar, month]);
 
   const { data: daySchedule, isLoading: dayLoading, isError: dayError } = useQuery({
     queryKey: ["patients", "day", selectedDate, dayPage, providerId, serviceId, sort, sortDir],
@@ -66,6 +81,13 @@ export function CalendarView() {
     enabled: selectedDate !== undefined,
   });
 
+  /** Opens the Day View for `date`, keeping `month` in sync so "Back to Calendar" (or crossing a month boundary via Prev/Next Day) always lands on the right month. */
+  function goToDay(date: string) {
+    setSelectedDate(date);
+    setMonth(date.slice(0, 7));
+    setDayPage(1);
+  }
+
   function handleSort(key: string) {
     setFilters((prev) => (
       prev.sort === key
@@ -75,110 +97,160 @@ export function CalendarView() {
     setDayPage(1);
   }
 
+  if (selectedDate) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10 sm:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark"
+              onClick={() => setSelectedDate(undefined)}
+            >
+              ‹ Back to Calendar
+            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Previous day"
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark"
+                onClick={() => goToDay(shiftDay(selectedDate, -1))}
+              >
+                ‹ Prev Day
+              </button>
+              <button
+                type="button"
+                aria-label="Next day"
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark"
+                onClick={() => goToDay(shiftDay(selectedDate, 1))}
+              >
+                Next Day ›
+              </button>
+            </div>
+          </div>
+          <h2 className="text-lg font-semibold">{formatDayHeading(selectedDate)}</h2>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-brand-bg/70">Schedule for {formatDate(selectedDate)}</p>
+          <ScheduleFilters
+            filters={filters}
+            onChange={(next) => {
+              setFilters((prev) => ({ ...prev, ...next }));
+              setDayPage(1);
+            }}
+          />
+        </div>
+
+        <ScheduleTable
+          data={daySchedule}
+          isLoading={dayLoading}
+          isError={dayError}
+          page={dayPage}
+          onPageChange={setDayPage}
+          loadingMessage="Loading that day's schedule…"
+          errorMessage="Could not load that day's schedule. Please try again."
+          emptyMessage={`No appointments scheduled${scheduleFilterSuffix(!!providerId, !!serviceId)} on this day.`}
+          contextKind="day"
+          providerId={providerId}
+          serviceId={serviceId}
+          sort={sort}
+          sortDir={sortDir}
+          onSort={handleSort}
+          date={selectedDate}
+          hasActiveFilters={!!providerId || !!serviceId}
+          onClearFilters={() => setFilters((prev) => ({ ...prev, provider_id: undefined, service_id: undefined }))}
+        />
+      </div>
+    );
+  }
+
   const maxCount = calendar ? Math.max(1, ...calendar.days.map((d) => d.count)) : 1;
   const leadingBlanks = calendar ? parseISODate(`${calendar.month}-01`).getDay() : 0;
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10 sm:p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <button
-            type="button"
-            aria-label="Previous month"
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark disabled:opacity-30"
-            disabled={!month}
-            onClick={() => month && setMonth(shiftMonth(month, -1))}
-          >
-            ‹ Prev
-          </button>
-          <h2 className="text-lg font-semibold">{month ? formatMonthLabel(month) : " "}</h2>
-          <button
-            type="button"
-            aria-label="Next month"
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark disabled:opacity-30"
-            disabled={!month}
-            onClick={() => month && setMonth(shiftMonth(month, 1))}
-          >
-            Next ›
-          </button>
-        </div>
-
-        {calendarLoading && <p className="text-brand-dark/60">Loading calendar…</p>}
-        {calendarError && <p className="text-rust">Could not load the calendar. Please try again.</p>}
-
-        {calendar && (
-          <>
-            <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 sm:gap-2">
-              {WEEKDAY_LABELS.map((label) => (
-                <div key={label}>{label}</div>
-              ))}
-            </div>
-            <div className="mt-1 grid grid-cols-7 gap-1 sm:gap-2">
-              {Array.from({ length: leadingBlanks }).map((_, index) => (
-                <div key={`blank-${index}`} />
-              ))}
-              {calendar.days.map((day) => {
-                const isSelected = day.date === selectedDate;
-                const isReferenceToday = day.date === calendar.reference_date;
-                const intensity = day.count > 0 ? 0.15 + 0.55 * (day.count / maxCount) : 0;
-                return (
-                  <button
-                    key={day.date}
-                    type="button"
-                    aria-pressed={isSelected}
-                    aria-label={`${formatDate(day.date)}, ${day.count} appointment${day.count === 1 ? "" : "s"}`}
-                    onClick={() => {
-                      setSelectedDate(day.date);
-                      setDayPage(1);
-                    }}
-                    className={`flex flex-col items-center gap-1 rounded-lg py-2 text-sm transition-colors ${
-                      isSelected ? "ring-2 ring-brand-gold" : "hover:bg-brand-dark/5"
-                    } ${isReferenceToday ? "font-semibold" : ""}`}
-                    style={{ backgroundColor: day.count > 0 ? `rgba(197, 163, 126, ${intensity})` : undefined }}
-                  >
-                    <span>{parseISODate(day.date).getDate()}</span>
-                    {isReferenceToday && <span className="h-1 w-1 rounded-full bg-brand-gold" />}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
+    <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10 sm:p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <button
+          type="button"
+          aria-label="Previous month"
+          className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark disabled:opacity-30"
+          disabled={!month}
+          onClick={() => month && setMonth(shiftMonth(month, -1))}
+        >
+          ‹ Prev
+        </button>
+        <h2 className="text-lg font-semibold">{month ? formatMonthLabel(month) : " "}</h2>
+        <button
+          type="button"
+          aria-label="Next month"
+          className="rounded-full px-3 py-1.5 text-sm font-medium text-brand-dark/60 transition-colors hover:bg-brand-dark/5 hover:text-brand-dark disabled:opacity-30"
+          disabled={!month}
+          onClick={() => month && setMonth(shiftMonth(month, 1))}
+        >
+          Next ›
+        </button>
       </div>
 
-      {selectedDate && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-brand-bg/70">Schedule for {formatDate(selectedDate)}</p>
-            <ScheduleFilters
-              filters={filters}
-              onChange={(next) => {
-                setFilters((prev) => ({ ...prev, ...next }));
-                setDayPage(1);
-              }}
-            />
-          </div>
+      {calendarLoading && <p className="text-brand-dark/60">Loading calendar…</p>}
+      {calendarError && <p className="text-rust">Could not load the calendar. Please try again.</p>}
 
-          <ScheduleTable
-            data={daySchedule}
-            isLoading={dayLoading}
-            isError={dayError}
-            page={dayPage}
-            onPageChange={setDayPage}
-            loadingMessage="Loading that day's schedule…"
-            errorMessage="Could not load that day's schedule. Please try again."
-            emptyMessage={`No appointments scheduled${scheduleFilterSuffix(!!providerId, !!serviceId)} on this day.`}
-            contextKind="day"
-            providerId={providerId}
-            serviceId={serviceId}
-            sort={sort}
-            sortDir={sortDir}
-            onSort={handleSort}
-            date={selectedDate}
-            hasActiveFilters={!!providerId || !!serviceId}
-            onClearFilters={() => setFilters((prev) => ({ ...prev, provider_id: undefined, service_id: undefined }))}
-          />
-        </div>
+      {calendar && (
+        <>
+          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 sm:gap-2">
+            {WEEKDAY_LABELS.map((label) => (
+              <div key={label}>{label}</div>
+            ))}
+          </div>
+          <div className="mt-1 grid grid-cols-7 gap-1 sm:gap-2">
+            {Array.from({ length: leadingBlanks }).map((_, index) => (
+              <div key={`blank-${index}`} />
+            ))}
+            {calendar.days.map((day) => {
+              const isReferenceToday = day.date === calendar.reference_date;
+              const intensity = day.count > 0 ? 0.15 + 0.55 * (day.count / maxCount) : 0;
+              const hiddenCount = day.count - day.appointments.length;
+              return (
+                <button
+                  key={day.date}
+                  type="button"
+                  aria-label={`${formatDate(day.date)}, ${day.count} appointment${day.count === 1 ? "" : "s"}`}
+                  onClick={() => goToDay(day.date)}
+                  className={`flex flex-col items-center gap-1 rounded-lg py-2 text-sm transition-colors hover:bg-brand-dark/5 sm:min-h-[5.75rem] sm:items-stretch sm:justify-start sm:gap-1 sm:px-1.5 sm:py-1.5 sm:text-left ${
+                    isReferenceToday ? "font-semibold" : ""
+                  }`}
+                  style={{ backgroundColor: day.count > 0 ? `rgba(197, 163, 126, ${intensity})` : undefined }}
+                >
+                  <span className="flex items-center gap-1">
+                    <span>{parseISODate(day.date).getDate()}</span>
+                    {isReferenceToday && <span className="h-1 w-1 rounded-full bg-brand-gold" />}
+                  </span>
+                  {day.appointments.length > 0 && (
+                    <div className="hidden w-full flex-col gap-0.5 sm:flex">
+                      {day.appointments.map((appt) => (
+                        <span
+                          key={appt.appointment_service_id}
+                          className="flex min-w-0 items-center gap-1 rounded bg-white/60 px-1 py-0.5 text-[10px] font-normal text-brand-dark/80"
+                        >
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: APPOINTMENT_STATUS_COLORS[appt.status] ?? "#64748b" }}
+                          />
+                          <span className="min-w-0 truncate">
+                            {formatTime(appt.start)} {appt.patient_name.split(" ")[0]}
+                          </span>
+                        </span>
+                      ))}
+                      {hiddenCount > 0 && (
+                        <span className="px-1 text-[10px] font-normal text-brand-dark/50">+{hiddenCount} more</span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

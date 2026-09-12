@@ -167,6 +167,11 @@ export function formatMonthLabel(month: string): string {
   return new Date(year, monthNum - 1, 1).toLocaleDateString("en-US", { year: "numeric", month: "long" });
 }
 
+/** Formats a "YYYY-MM-DD" date-only string with its weekday, e.g. "Wednesday, June 18, 2025" -- the Calendar view's Day View heading. */
+export function formatDayHeading(value: string): string {
+  return parseISODate(value).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+}
+
 /**
  * Computes a whole-number age in years from an ISO date-of-birth string,
  * accounting for whether this year's birthday has happened yet (not just

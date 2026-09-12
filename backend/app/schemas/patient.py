@@ -222,11 +222,29 @@ class RebookingOpportunitiesResponse(BaseModel):
     reference_date: date
 
 
+class CalendarAppointmentPreview(BaseModel):
+    """One scheduled service's preview info, for the calendar month grid's per-day chip
+    list -- just enough to render a Google-Calendar-style truncated event chip (time +
+    patient name, dot-colored by status) without a full schedule-row fetch per day.
+    """
+
+    appointment_service_id: int  # the AppointmentService row's own surrogate id (int, not a prefixed string -- see the model)
+    patient_name: str
+    start: datetime
+    status: str
+
+
 class CalendarDayCount(BaseModel):
-    """One day's scheduled (non-cancelled) service count, for the calendar view's density grid."""
+    """One day's scheduled (non-cancelled) service count, for the calendar view's density
+    grid, plus a capped preview of that day's earliest appointments (see
+    `get_calendar_month`'s `CALENDAR_DAY_PREVIEW_LIMIT`) for the month grid's chip list.
+    `count` is always the true total, even when `len(appointments) < count` -- the
+    frontend renders "+N more" from the difference.
+    """
 
     date: date
     count: int
+    appointments: list[CalendarAppointmentPreview] = []
 
 
 class CalendarMonthResponse(BaseModel):
