@@ -40,7 +40,7 @@ interface Props {
 
 export function TodaysAppointmentsTable({ filters, onFiltersChange }: Props) {
   const [page, setPage] = useState(1);
-  const { provider_id: providerId, service_id: serviceId, sort } = filters;
+  const { provider_id: providerId, service_id: serviceId, sort, sort_dir: sortDir } = filters;
 
   // `filters` now comes from the parent (rendered in the shared tab row)
   // rather than being set locally, so resetting back to page 1 on a
@@ -48,12 +48,16 @@ export function TodaysAppointmentsTable({ filters, onFiltersChange }: Props) {
   // this effect does the equivalent whenever the filters actually change.
   useEffect(() => {
     setPage(1);
-  }, [providerId, serviceId, sort]);
+  }, [providerId, serviceId, sort, sortDir]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patients", "today", page, providerId, serviceId, sort],
-    queryFn: () => api.getTodaysAppointments({ page, page_size: PAGE_SIZE, provider_id: providerId, service_id: serviceId, sort }),
+    queryKey: ["patients", "today", page, providerId, serviceId, sort, sortDir],
+    queryFn: () => api.getTodaysAppointments({ page, page_size: PAGE_SIZE, provider_id: providerId, service_id: serviceId, sort, sort_dir: sortDir }),
   });
+
+  function handleSort(key: string) {
+    onFiltersChange(sort === key ? { sort: key, sort_dir: sortDir === "asc" ? "desc" : "asc" } : { sort: key, sort_dir: "asc" });
+  }
 
   return (
     <div className="space-y-4">
@@ -72,6 +76,8 @@ export function TodaysAppointmentsTable({ filters, onFiltersChange }: Props) {
         providerId={providerId}
         serviceId={serviceId}
         sort={sort}
+        sortDir={sortDir}
+        onSort={handleSort}
         hasActiveFilters={!!providerId || !!serviceId}
         onClearFilters={() => onFiltersChange({ provider_id: undefined, service_id: undefined })}
       />

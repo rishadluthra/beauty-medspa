@@ -1,12 +1,16 @@
 "use client";
 
 /**
- * Filter/sort toolbar for Today's Appointments and the Calendar view's day drill-down --
+ * Filter toolbar for Today's Appointments and the Calendar view's day drill-down --
  * same dropdown pattern as `PatientFilters` (a `FILTER_PILL_CLASSNAME` toggle button that
  * opens a small card), replacing the schedule views' previous bare provider-only
- * `ProviderFilterSelect` pill now that there's a service filter and a sort order too.
+ * `ProviderFilterSelect` pill now that there's a service filter too. Sorting used to
+ * live here too (a "Sort: X" select) -- removed in favor of column-header click-to-sort
+ * on `ScheduleTable` itself, the same change `PatientFilters` went through for the same
+ * reason (one consistent way to sort, covering every column, not just the few a
+ * dropdown had room to list).
  *
- * Holds only its own open/closed UI state -- the actual filter/sort *values* are owned
+ * Holds only its own open/closed UI state -- the actual filter *values* are owned
  * by whichever page renders this (`PatientsPage` for Today's Appointments, `CalendarView`
  * for the day drill-down) and passed in as `filters`, with every change reported upward
  * via `onChange`, the same contract `PatientFilters` uses.
@@ -17,12 +21,6 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api, type ScheduleFilterParams } from "@/lib/api";
 import { FILTER_FIELD_CLASSNAME, FILTER_PILL_CLASSNAME } from "@/lib/pillStyles";
-
-const SORTS = [
-  { value: "time", label: "Time" },
-  { value: "patient_name", label: "Patient Name" },
-  { value: "provider_name", label: "Provider Name" },
-];
 
 interface Props {
   filters: ScheduleFilterParams;
@@ -115,17 +113,6 @@ export function ScheduleFilters({ filters, onChange }: Props) {
             <option value="">All services</option>
             {services?.items.map((service) => (
               <option key={service.id} value={service.id}>{service.name}</option>
-            ))}
-          </select>
-
-          <select
-            aria-label="Sort schedule by"
-            className={FILTER_FIELD_CLASSNAME}
-            value={filters.sort ?? "time"}
-            onChange={(e) => onChange({ sort: e.target.value })}
-          >
-            {SORTS.map((s) => (
-              <option key={s.value} value={s.value}>Sort: {s.label}</option>
             ))}
           </select>
         </div>

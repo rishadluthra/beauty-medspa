@@ -9,6 +9,7 @@
  * building, and error handling for HTTP calls to the backend.
  */
 
+import type { PatientFilterCondition } from "./patientFilters";
 import type {
   AppointmentDetailContext,
   AppointmentDetailPageResponse,
@@ -113,26 +114,25 @@ async function apiPut<T>(path: string, body: unknown): Promise<T> {
 export interface ScheduleFilterParams {
   provider_id?: string;
   service_id?: string;
-  /** "time" (default, chronological), "patient_name", or "provider_name". */
+  /** "time" (default, chronological), "patient_name", "provider_name", "service_name", or "status". */
   sort?: string;
+  /** "asc" or "desc" -- set via column-header click-to-sort, not a dropdown (see `ScheduleTable`). */
+  sort_dir?: string;
 }
 
-/** Query/filter/pagination params accepted by `GET /api/patients`. */
+/**
+ * Query/filter/pagination params accepted by `GET /api/patients`. `filters` is the
+ * generic, per-column-type condition list (see `lib/patientFilters.ts`) that replaced
+ * this endpoint's earlier fixed named params (`source`, `age_min`/`age_max`, etc.) --
+ * `search` stays its own separate top-level param (the quick-search box), not folded
+ * into `filters`, since it's a fast fuzzy lookup, not a structured per-column condition.
+ */
 export interface PatientQueryParams {
   search?: string;
-  source?: string;
-  gender?: string;
-  /** ISO date string (YYYY-MM-DD), inclusive. */
-  created_from?: string;
-  /** ISO date string (YYYY-MM-DD), inclusive of the entire day. */
-  created_to?: string;
-  /** Minimum age in years, inclusive, as of today. */
-  age_min?: number;
-  /** Maximum age in years, inclusive, as of today. */
-  age_max?: number;
-  /** Minimum lifetime spend in cents (paid payments only), inclusive -- for finding high-value patients. */
-  min_total_spent_cents?: number;
+  filters?: PatientFilterCondition[];
   sort?: string;
+  /** "asc" or "desc" -- a genuine per-request choice now that every column is click-to-sort, not baked into `sort` itself. */
+  sort_dir?: string;
   page?: number;
   page_size?: number;
 }
@@ -144,7 +144,17 @@ export interface PatientQueryParams {
  */
 export const api = {
   /** Fetches a page of the patient table, with optional search/filter/sort. */
-  getPatients: (params: PatientQueryParams) => apiGet<PatientListResponse>("/api/patients", { ...params }),
+  getPatients: (params: PatientQueryParams) => {
+    // `filters` is an array of objects -- apiGet's query-string builder only handles
+    // primitive values, so it's JSON-encoded into a single `filters` param here (the
+    // exact shape `_parse_filters` on the backend expects), rather than teaching the
+    // shared query-string builder about one endpoint's own array-of-objects param.
+    const { filters, ...rest } = params;
+    return apiGet<PatientListResponse>("/api/patients", {
+      ...rest,
+      filters: filters && filters.length > 0 ? JSON.stringify(filters) : undefined,
+    });
+  },
   /** Fetches today's full schedule (the default Patients-page view). `provider_id`/`service_id` narrow to one provider's/service's own schedule; `sort` picks the display order. */
   getTodaysAppointments: (params: { page?: number; page_size?: number } & ScheduleFilterParams) =>
     apiGet<TodaysAppointmentsResponse>("/api/patients/today", { ...params }),
@@ -157,8 +167,8 @@ export const api = {
    */
   getUpcomingAppointments: (params: { page?: number; page_size?: number; provider_id?: string; only_tomorrow?: boolean }) =>
     apiGet<UpcomingAppointmentsResponse>("/api/patients/upcoming", { ...params }),
-  /** Fetches a page of the Rebooking Opportunities worklist (seen before, nothing scheduled going forward), most-recently-seen first. */
-  getRebookingOpportunities: (params: { page?: number; page_size?: number }) =>
+  /** Fetches a page of the Rebooking Opportunities worklist (seen before, nothing scheduled going forward). Defaults to most-recently-seen first; `sort`/`sort_dir` pick any other column. */
+  getRebookingOpportunities: (params: { page?: number; page_size?: number; sort?: string; sort_dir?: string }) =>
     apiGet<RebookingOpportunitiesResponse>("/api/patients/rebooking-opportunities", { ...params }),
   /** Fetches every provider, for populating the schedule views' provider filter. */
   getProviders: () => apiGet<ProviderListResponse>("/api/providers"),
@@ -255,8 +265,8 @@ export const api = {
  * Builds the `/patients/{id}` URL for linking to a patient from a specific source list
  * (All Patients or Rebooking Opportunities), encoding `context` into the query string
  * with the exact key names `api.getPatientDetail`/the backend expect (`ctx`, `sort`,
- * `search`, ..., `age_max`) -- so the destination page's Previous/Next buttons walk
- * that same list's order instead of the global default (see `PatientDetailContext`).
+ * `sort_dir`, `search`, `filters`) -- so the destination page's Previous/Next buttons
+ * walk that same list's order instead of the global default (see `PatientDetailContext`).
  *
  * Every list/table component that links out to a patient should build its link through
  * this helper rather than a bare `/patients/${id}` template string, so a new list added
@@ -270,16 +280,11 @@ export function patientDetailHref(patientId: string, context?: PatientDetailCont
 
   if (context) {
     set("ctx", context.kind);
+    set("sort", context.sort);
+    set("sort_dir", context.sortDir);
     if (context.kind === "all") {
-      set("sort", context.sort);
       set("search", context.search);
-      set("source", context.source);
-      set("gender", context.gender);
-      set("created_from", context.created_from);
-      set("created_to", context.created_to);
-      set("age_min", context.age_min);
-      set("age_max", context.age_max);
-      set("min_total_spent_cents", context.min_total_spent_cents);
+      if (context.filters && context.filters.length > 0) set("filters", JSON.stringify(context.filters));
     }
   }
 
@@ -305,6 +310,7 @@ export function appointmentDetailHref(appointmentId: string, context: Appointmen
   set("provider_id", context.providerId);
   set("filter_service_id", context.filterServiceId);
   set("sort", context.sort);
+  set("sort_dir", context.sortDir);
   set("service_id", context.serviceId);
   if (context.kind === "day") set("date", context.date);
 

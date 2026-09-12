@@ -36,11 +36,12 @@ class ScheduleContext:
     provider_id: str | None = None
     filter_service_id: str | None = None
     sort: str = "time"
+    sort_dir: str = "asc"
 
 
 async def _neighbors_in_schedule(
     db: AsyncSession, service_id: int | None, start_of_day: datetime, end_of_day: datetime,
-    provider_id: str | None, filter_service_id: str | None, sort: str,
+    provider_id: str | None, filter_service_id: str | None, sort: str, sort_dir: str,
 ) -> tuple[str | None, int | None, str | None, int | None]:
     """Previous/Next appointment for the Appointment Detail page: the appointment AND
     the specific `AppointmentService` row belonging to the schedule slot immediately
@@ -67,6 +68,7 @@ async def _neighbors_in_schedule(
         select(AppointmentService.id, AppointmentService.appointment_id)
         .join(Appointment, Appointment.id == AppointmentService.appointment_id)
         .join(Patient, Patient.id == Appointment.patient_id)
+        .join(Service, Service.id == AppointmentService.service_id)
         .join(Provider, Provider.id == AppointmentService.provider_id)
         .where(
             Appointment.status != "cancelled",
@@ -79,7 +81,7 @@ async def _neighbors_in_schedule(
     if filter_service_id:
         base = base.where(AppointmentService.service_id == filter_service_id)
     ranked = base.add_columns(
-        func.row_number().over(order_by=_schedule_sort_expressions(sort)).label("rn")
+        func.row_number().over(order_by=_schedule_sort_expressions(sort, sort_dir)).label("rn")
     ).subquery()
 
     current_rn = (await db.execute(select(ranked.c.rn).where(ranked.c.id == service_id))).scalar_one_or_none()
@@ -169,7 +171,7 @@ async def get_appointment_detail(
         start_of_day, end_of_day = reference_now, reference_now + timedelta(days=1)
 
     previous_appointment_id, previous_service_id, next_appointment_id, next_service_id = await _neighbors_in_schedule(
-        db, service_id, start_of_day, end_of_day, context.provider_id, context.filter_service_id, context.sort,
+        db, service_id, start_of_day, end_of_day, context.provider_id, context.filter_service_id, context.sort, context.sort_dir,
     )
 
     return AppointmentDetailResponse(

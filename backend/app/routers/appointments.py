@@ -25,6 +25,7 @@ async def get_appointment(
     provider_id: str | None = None,
     filter_service_id: str | None = None,
     sort: str = "time",
+    sort_dir: str = "asc",
     date: date | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> AppointmentDetailResponse:
@@ -44,7 +45,7 @@ async def get_appointment(
     """
     context = ScheduleContext(
         kind=ctx or "today", target_date=date, provider_id=provider_id,
-        filter_service_id=filter_service_id, sort=sort,
+        filter_service_id=filter_service_id, sort=sort, sort_dir=sort_dir,
     )
     detail = await get_appointment_detail(db, appointment_id, service_id, context)
     if detail is None:

@@ -15,13 +15,23 @@
  * `filters`/`onFiltersChange` come in as props, the same shape
  * `PatientFilters` itself expects, so the parent can wire the two
  * together directly.
+ *
+ * Every column except Phone is click-to-sort (see `PATIENT_COLUMNS` in
+ * `lib/patientFilters.ts` for which are `sortable`) -- clicking a header
+ * sorts by it ascending, clicking the already-active header flips to
+ * descending. This replaced the old standalone "Sort: X" dropdown in
+ * `PatientFilters`, which only covered 4 of the table's columns; every
+ * column now sorts the same way a spreadsheet's does, including ones
+ * (Age, Gender, Appointments) that dropdown never could.
  */
 
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
+import { SortableTableHeader } from "@/components/SortableTableHeader";
 import { api, patientDetailHref, type PatientQueryParams } from "@/lib/api";
 import { calculateAge, formatCents, formatDate, formatLabel, formatPhone } from "@/lib/format";
+import { isCompleteFilterCondition, PATIENT_COLUMNS } from "@/lib/patientFilters";
 import type { PatientDetailContext } from "@/lib/types";
 import { SourceBadge } from "./SourceBadge";
 
@@ -36,24 +46,34 @@ interface Props {
  * Important: this is fully server-side pagination/filtering/sorting, not a
  * client-side slice of a bulk-fetched array. `filters` is the single source
  * of truth for what to display; it's passed as the TanStack Query
- * `queryKey`, so any change to it (search text, source/gender/sort,
+ * `queryKey`, so any change to it (search text, filter conditions, sort,
  * page number) is treated as a new query and triggers a fresh API call.
  * The full ~4,000-patient set is never loaded into the browser at once.
  */
 export function PatientTable({ filters, onFiltersChange }: Props) {
   const router = useRouter();
+  const sort = filters.sort ?? "name";
+  const sortDir = filters.sort_dir ?? "asc";
+
+  // Only COMPLETE filter conditions (a value already entered) are sent to the API -- a
+  // row still being edited in `PatientFilters` (column picked, no value yet) stays local
+  // UI state there and simply isn't queried on until it's finished. See
+  // `isCompleteFilterCondition`.
+  const apiFilters: PatientQueryParams = { ...filters, filters: (filters.filters ?? []).filter(isCompleteFilterCondition) };
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["patients", filters],
-    queryFn: () => api.getPatients(filters),
+    queryFn: () => api.getPatients(apiFilters),
   });
+
+  function handleSort(key: string) {
+    onFiltersChange(sort === key ? { sort: key, sort_dir: sortDir === "asc" ? "desc" : "asc", page: 1 } : { sort: key, sort_dir: "asc", page: 1 });
+  }
 
   // Same filters/sort the table itself is currently showing -- so the detail page's
   // Previous/Next buttons walk this exact list, not the unfiltered global order.
   const context: PatientDetailContext = {
-    kind: "all", sort: filters.sort, search: filters.search, source: filters.source,
-    gender: filters.gender, created_from: filters.created_from, created_to: filters.created_to,
-    age_min: filters.age_min, age_max: filters.age_max, min_total_spent_cents: filters.min_total_spent_cents,
+    kind: "all", sort, sortDir, search: filters.search, filters: apiFilters.filters,
   };
 
   return (
@@ -79,7 +99,7 @@ export function PatientTable({ filters, onFiltersChange }: Props) {
               truncation bug that caused), so this uses the same
               content-based `table-auto` + `whitespace-nowrap` sizing, with
               `overflow-x-auto` on the wrapper as the fallback on narrower
-              screens now that there are nine columns to fit. Every column
+              screens now that there are ten columns to fit. Every column
               is left-aligned, including the numeric ones -- a deliberate,
               explicit request, not the usual right-aligned-numbers
               convention, since a per-column mix of alignments here read as
@@ -88,28 +108,27 @@ export function PatientTable({ filters, onFiltersChange }: Props) {
             <table className="w-full text-sm">
               <thead className="text-left text-brand-dark">
                 <tr className="border-b border-brand-gold/20">
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Name</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Email</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Age</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Gender</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Source</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Joined</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Appointments</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Spent</th>
+                  {PATIENT_COLUMNS.map((column) => (
+                    <SortableTableHeader
+                      key={column.key}
+                      label={column.label}
+                      sortKey={column.sortable ? column.key : undefined}
+                      activeSort={sort}
+                      activeDir={sortDir}
+                      onSort={handleSort}
+                    />
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-dark/5 text-brand-dark">
                 {/*
-                  Empty-state row. colSpan={9} must match the number of
-                  <th> columns in the header above (Name, Phone, Email,
-                  Age, Gender, Source, Joined, Appointments, Spent) — if a
-                  column is ever added/removed, update this number too or
-                  the empty-state cell will misalign.
+                  Empty-state row. colSpan must match the number of <th>
+                  columns above (driven by `PATIENT_COLUMNS.length`, so
+                  this can never silently fall out of sync with them).
                 */}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="p-6 text-center text-brand-sage">
+                    <td colSpan={PATIENT_COLUMNS.length} className="p-6 text-center text-brand-sage">
                       No patients match these filters.
                     </td>
                   </tr>
@@ -129,6 +148,7 @@ export function PatientTable({ filters, onFiltersChange }: Props) {
                     <td className="whitespace-nowrap px-4 py-3.5">{formatDate(patient.created_date)}</td>
                     <td className="whitespace-nowrap px-4 py-3.5">{patient.appointment_count}</td>
                     <td className="whitespace-nowrap px-4 py-3.5">{formatCents(patient.total_spent_cents)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5">{formatDate(patient.last_appointment_date)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -160,6 +180,7 @@ export function PatientTable({ filters, onFiltersChange }: Props) {
                   <span className="text-brand-dark/70">{patient.appointment_count} appointments</span>
                   <span className="font-medium">{formatCents(patient.total_spent_cents)}</span>
                 </div>
+                <p className="mt-1 text-sm text-brand-dark/60">Last appointment: {formatDate(patient.last_appointment_date)}</p>
               </div>
             ))}
           </div>

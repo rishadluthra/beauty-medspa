@@ -6,6 +6,7 @@ httpx's ASGITransport, confirming the router wiring, request handling,
 and JSON serialization all work end-to-end.
 """
 
+import json
 from datetime import datetime
 
 from httpx import ASGITransport, AsyncClient
@@ -37,6 +38,52 @@ async def test_get_patients_endpoint_returns_list(db_session):
 
     # Reset overrides so this test's DB override doesn't leak into other tests
     # sharing the same `app` instance.
+    app.dependency_overrides.clear()
+
+
+async def test_get_patients_endpoint_accepts_json_filters_and_sort_dir(db_session):
+    """GET /api/patients?filters=<JSON>&sort=...&sort_dir=... parses the generic filter
+    condition(s) and applies them, end-to-end over real HTTP -- not just at the
+    repository layer (test_patients_repository.py).
+    """
+    app.dependency_overrides[get_db] = lambda: db_session
+    db_session.add_all([
+        make_patient(id="pat_ig", source="instagram"),
+        make_patient(id="pat_go", source="google"),
+    ])
+    await db_session.commit()
+
+    filters = json.dumps([{"field": "source", "operator": "is", "value": "instagram"}])
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/patients", params={"filters": filters, "sort": "source", "sort_dir": "desc"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == "pat_ig"
+
+    app.dependency_overrides.clear()
+
+
+async def test_get_patients_endpoint_rejects_malformed_and_invalid_filters(db_session):
+    """Malformed JSON in `filters`, and a structurally-valid-but-semantically-wrong
+    condition (unknown field, or an operator that doesn't apply to that field's type),
+    both come back as 400 -- not a 500, and not silently ignored.
+    """
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        malformed = await client.get("/api/patients", params={"filters": "not json"})
+        unknown_field = await client.get("/api/patients", params={"filters": '[{"field":"phone","operator":"contains","value":"555"}]'})
+        bad_operator = await client.get("/api/patients", params={"filters": '[{"field":"age","operator":"contains","value":"30"}]'})
+
+    assert malformed.status_code == 400
+    assert unknown_field.status_code == 400
+    assert bad_operator.status_code == 400
+
     app.dependency_overrides.clear()
 
 

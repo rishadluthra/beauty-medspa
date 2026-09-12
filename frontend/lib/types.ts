@@ -9,6 +9,8 @@
  * actually returns.
  */
 
+import type { PatientFilterCondition } from "./patientFilters";
+
 /** A single row in the patient list/table, as returned by `GET /api/patients`. */
 export interface PatientListItem {
   id: string;
@@ -171,16 +173,12 @@ export type PatientDetailContext =
   | {
       kind: "all";
       sort?: string;
+      sortDir?: string;
       search?: string;
-      source?: string;
-      gender?: string;
-      created_from?: string;
-      created_to?: string;
-      age_min?: number;
-      age_max?: number;
-      min_total_spent_cents?: number;
+      /** The generic per-column filter list -- see `lib/patientFilters.ts`. */
+      filters?: PatientFilterCondition[];
     }
-  | { kind: "rebooking" };
+  | { kind: "rebooking"; sort?: string; sortDir?: string };
 
 /**
  * Which schedule window (Today's Appointments, or a specific Calendar day) a schedule
@@ -195,8 +193,8 @@ export type PatientDetailContext =
  * `service_id`). Encoded into the URL by `appointmentDetailHref` in `lib/api.ts`.
  */
 export type AppointmentDetailContext =
-  | { kind: "today"; providerId?: string; filterServiceId?: string; sort?: string; serviceId: number }
-  | { kind: "day"; date: string; providerId?: string; filterServiceId?: string; sort?: string; serviceId: number };
+  | { kind: "today"; providerId?: string; filterServiceId?: string; sort?: string; sortDir?: string; serviceId: number }
+  | { kind: "day"; date: string; providerId?: string; filterServiceId?: string; sort?: string; sortDir?: string; serviceId: number };
 
 /** One scheduled service occurring "today", as returned by `GET /api/patients/today`. One row per service, not per patient. */
 export interface TodaysAppointmentItem {

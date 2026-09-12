@@ -5,30 +5,49 @@
  * been seen before but have nothing scheduled going forward. Unlike every
  * other view on this page (all about *existing* appointments), this is
  * actionable in the opposite direction -- these are the people worth
- * calling to get back on the books. Sorted most-recently-seen first (see
+ * calling to get back on the books. Defaults to most-recently-seen first (see
  * the backend's `list_rebooking_opportunities` for why), so the most promising
- * calls are at the top rather than buried under years-stale leads.
+ * calls are at the top rather than buried under years-stale leads -- every
+ * column except Phone is click-to-sort, the same as every other table in this app.
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
+import { SortableTableHeader } from "@/components/SortableTableHeader";
 import { api, patientDetailHref } from "@/lib/api";
 import { formatDate, formatPhone } from "@/lib/format";
 import type { PatientDetailContext } from "@/lib/types";
 
 const PAGE_SIZE = 25;
-const REBOOKING_CONTEXT: PatientDetailContext = { kind: "rebooking" };
+const DEFAULT_SORT = "last_appointment_date";
+const DEFAULT_SORT_DIR = "desc";
 
 export function RebookingOpportunitiesTable() {
   const router = useRouter();
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState(DEFAULT_SORT);
+  const [sortDir, setSortDir] = useState(DEFAULT_SORT_DIR);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patients", "rebooking-opportunities", page],
-    queryFn: () => api.getRebookingOpportunities({ page, page_size: PAGE_SIZE }),
+    queryKey: ["patients", "rebooking-opportunities", page, sort, sortDir],
+    queryFn: () => api.getRebookingOpportunities({ page, page_size: PAGE_SIZE, sort, sort_dir: sortDir }),
   });
+
+  function handleSort(key: string) {
+    if (sort === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSort(key);
+      setSortDir("asc");
+    }
+    setPage(1);
+  }
+
+  // Same sort/sort_dir the worklist is currently showing -- so the detail page's
+  // Previous/Next buttons walk this exact order.
+  const context: PatientDetailContext = { kind: "rebooking", sort, sortDir };
 
   return (
     <div className="space-y-4">
@@ -47,12 +66,12 @@ export function RebookingOpportunitiesTable() {
             <table className="w-full text-sm">
               <thead className="text-left text-brand-dark">
                 <tr className="border-b border-brand-gold/20">
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Name</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Email</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Last Appointment</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Last Service</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Provider</th>
+                  <SortableTableHeader label="Name" sortKey="name" activeSort={sort} activeDir={sortDir} onSort={handleSort} />
+                  <SortableTableHeader label="Phone" activeSort={sort} activeDir={sortDir} onSort={handleSort} />
+                  <SortableTableHeader label="Email" sortKey="email" activeSort={sort} activeDir={sortDir} onSort={handleSort} />
+                  <SortableTableHeader label="Last Appointment" sortKey="last_appointment_date" activeSort={sort} activeDir={sortDir} onSort={handleSort} />
+                  <SortableTableHeader label="Last Service" sortKey="last_service_name" activeSort={sort} activeDir={sortDir} onSort={handleSort} />
+                  <SortableTableHeader label="Provider" sortKey="last_provider_name" activeSort={sort} activeDir={sortDir} onSort={handleSort} />
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-dark/5 text-brand-dark">
@@ -67,7 +86,7 @@ export function RebookingOpportunitiesTable() {
                 {data.items.map((item) => (
                   <tr
                     key={item.id}
-                    onClick={() => router.push(patientDetailHref(item.id, REBOOKING_CONTEXT))}
+                    onClick={() => router.push(patientDetailHref(item.id, context))}
                     className="cursor-pointer transition-colors hover:bg-brand-gold/5"
                   >
                     <td className="whitespace-nowrap px-4 py-3.5">{item.first_name} {item.last_name}</td>
@@ -92,7 +111,7 @@ export function RebookingOpportunitiesTable() {
             {data.items.map((item) => (
               <div
                 key={item.id}
-                onClick={() => router.push(`/patients/${item.id}`)}
+                onClick={() => router.push(patientDetailHref(item.id, context))}
                 className="cursor-pointer rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10"
               >
                 <p className="font-medium">{item.first_name} {item.last_name}</p>

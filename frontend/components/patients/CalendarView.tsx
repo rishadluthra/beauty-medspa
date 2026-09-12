@@ -42,7 +42,7 @@ export function CalendarView() {
   const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
   const [dayPage, setDayPage] = useState(1);
   const [filters, setFilters] = useState<ScheduleFilterParams>({});
-  const { provider_id: providerId, service_id: serviceId, sort } = filters;
+  const { provider_id: providerId, service_id: serviceId, sort, sort_dir: sortDir } = filters;
 
   const { data: calendar, isLoading: calendarLoading, isError: calendarError } = useQuery({
     queryKey: ["patients", "calendar", month],
@@ -58,13 +58,22 @@ export function CalendarView() {
   }, [calendar, month, selectedDate]);
 
   const { data: daySchedule, isLoading: dayLoading, isError: dayError } = useQuery({
-    queryKey: ["patients", "day", selectedDate, dayPage, providerId, serviceId, sort],
+    queryKey: ["patients", "day", selectedDate, dayPage, providerId, serviceId, sort, sortDir],
     queryFn: () => api.getDaySchedule({
       date: selectedDate as string, page: dayPage, page_size: DAY_PAGE_SIZE,
-      provider_id: providerId, service_id: serviceId, sort,
+      provider_id: providerId, service_id: serviceId, sort, sort_dir: sortDir,
     }),
     enabled: selectedDate !== undefined,
   });
+
+  function handleSort(key: string) {
+    setFilters((prev) => (
+      prev.sort === key
+        ? { ...prev, sort: key, sort_dir: prev.sort_dir === "asc" ? "desc" : "asc" }
+        : { ...prev, sort: key, sort_dir: "asc" }
+    ));
+    setDayPage(1);
+  }
 
   const maxCount = calendar ? Math.max(1, ...calendar.days.map((d) => d.count)) : 1;
   const leadingBlanks = calendar ? parseISODate(`${calendar.month}-01`).getDay() : 0;
@@ -163,6 +172,8 @@ export function CalendarView() {
             providerId={providerId}
             serviceId={serviceId}
             sort={sort}
+            sortDir={sortDir}
+            onSort={handleSort}
             date={selectedDate}
             hasActiveFilters={!!providerId || !!serviceId}
             onClearFilters={() => setFilters((prev) => ({ ...prev, provider_id: undefined, service_id: undefined }))}

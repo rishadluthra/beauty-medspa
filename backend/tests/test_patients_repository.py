@@ -7,6 +7,8 @@ aggregation logic (spend totals, appointment counts) and filtering.
 
 from datetime import date, datetime, timedelta
 
+import pytest
+
 from app.repositories.patients import (
     PatientFilters,
     PatientListContext,
@@ -18,6 +20,12 @@ from app.repositories.patients import (
     list_todays_appointments,
     list_upcoming_appointments,
 )
+from app.schemas.patient_filters import PatientFilterCondition
+
+
+def cond(field: str, operator: str, value: str | None = None, value2: str | None = None, values: list[str] | None = None) -> PatientFilterCondition:
+    """Shorthand for building one generic filter condition in tests."""
+    return PatientFilterCondition(field=field, operator=operator, value=value, value2=value2, values=values)
 from tests.factories import (
     make_appointment,
     make_appointment_service,
@@ -76,27 +84,62 @@ async def test_list_patients_last_appointment_date_is_the_actual_visit_time_not_
     assert result.items[0].last_appointment_date == datetime(2025, 11, 1, 9, 0)
 
 
-async def test_list_patients_filters_by_source(db_session):
-    """PatientFilters(source=...) restricts results to patients from that marketing channel only."""
+async def test_list_patients_filters_enum_is_is_not_is_any_of_is_none_of(db_session):
+    """The `enum` operator family on `source` (also used by `gender`): `is` (exact match),
+    `is_not` (negation), `is_any_of`/`is_none_of` (set membership/exclusion).
+    """
     db_session.add_all([
-        make_patient(id="pat_1", source="instagram"),
-        make_patient(id="pat_2", source="google"),
+        make_patient(id="pat_ig", source="instagram"),
+        make_patient(id="pat_go", source="google"),
+        make_patient(id="pat_tt", source="tiktok"),
     ])
     await db_session.commit()
 
-    result = await list_patients(db_session, PatientFilters(source="instagram"))
+    is_result = await list_patients(db_session, PatientFilters(filters=[cond("source", "is", "instagram")]))
+    assert {i.id for i in is_result.items} == {"pat_ig"}
 
-    assert result.total == 1
-    assert result.items[0].id == "pat_1"
+    is_not_result = await list_patients(db_session, PatientFilters(filters=[cond("source", "is_not", "instagram")]))
+    assert {i.id for i in is_not_result.items} == {"pat_go", "pat_tt"}
+
+    any_of_result = await list_patients(db_session, PatientFilters(filters=[cond("source", "is_any_of", values=["instagram", "google"])]))
+    assert {i.id for i in any_of_result.items} == {"pat_ig", "pat_go"}
+
+    none_of_result = await list_patients(db_session, PatientFilters(filters=[cond("source", "is_none_of", values=["instagram", "google"])]))
+    assert {i.id for i in none_of_result.items} == {"pat_tt"}
+
+
+async def test_list_patients_filters_text_contains_and_equals_family(db_session):
+    """The `text` operator family on `name` (a computed "first last" expression): `contains`
+    (substring anywhere, case-insensitive), `not_contains`, `equals` (whole-string, not
+    substring), `not_equals`.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1", first_name="Julia", last_name="Acevedo"),
+        make_patient(id="pat_2", first_name="Adam", last_name="Morton"),
+    ])
+    await db_session.commit()
+
+    contains = await list_patients(db_session, PatientFilters(filters=[cond("name", "contains", "acev")]))
+    assert {i.id for i in contains.items} == {"pat_1"}
+
+    not_contains = await list_patients(db_session, PatientFilters(filters=[cond("name", "not_contains", "acev")]))
+    assert {i.id for i in not_contains.items} == {"pat_2"}
+
+    equals = await list_patients(db_session, PatientFilters(filters=[cond("name", "equals", "julia acevedo")]))
+    assert {i.id for i in equals.items} == {"pat_1"}
+
+    # "julia" alone is a substring of "Julia Acevedo" but not equal to the whole name.
+    not_equals = await list_patients(db_session, PatientFilters(filters=[cond("name", "equals", "julia")]))
+    assert not_equals.total == 0
 
 
 async def test_list_patients_filters_by_created_date_range(db_session):
-    """created_from/created_to bound Patient.created_date, and created_to is inclusive of its whole day.
+    """`created_date` "between" bounds Patient.created_date, inclusive of the whole
+    upper-bound day (not just midnight).
 
     Three patients created on Jan 5, Jan 15 (at 23:30, near end of day), and
-    Jan 25. Filtering created_from=Jan 10 to created_to=Jan 15 must include
-    the Jan 15 23:30 patient (proving created_to isn't just midnight) while
-    excluding Jan 5 and Jan 25.
+    Jan 25. Filtering between Jan 10 and Jan 15 must include the Jan 15 23:30
+    patient (proving the upper bound isn't just midnight) while excluding Jan 5 and Jan 25.
     """
     db_session.add_all([
         make_patient(id="pat_1", created_date=datetime(2026, 1, 5, 9, 0)),
@@ -106,21 +149,28 @@ async def test_list_patients_filters_by_created_date_range(db_session):
     await db_session.commit()
 
     result = await list_patients(
-        db_session, PatientFilters(created_from=datetime(2026, 1, 10).date(), created_to=datetime(2026, 1, 15).date()),
+        db_session, PatientFilters(filters=[cond("created_date", "between", "2026-01-10", "2026-01-15")]),
     )
 
     assert result.total == 1
     assert result.items[0].id == "pat_2"
 
+    on_result = await list_patients(db_session, PatientFilters(filters=[cond("created_date", "on", "2026-01-15")]))
+    assert {i.id for i in on_result.items} == {"pat_2"}
 
-async def test_list_patients_filters_by_age_range_inclusive_at_both_boundaries(db_session):
-    """age_min/age_max bound age-as-of-today (derived from date_of_birth), inclusive on both ends.
+    before_result = await list_patients(db_session, PatientFilters(filters=[cond("created_date", "before", "2026-01-15")]))
+    assert {i.id for i in before_result.items} == {"pat_1"}
 
-    Four patients who turn exactly 19, 20, 30, and 31 today (i.e. born
-    exactly that many years ago). Filtering age_min=20, age_max=30 must
-    include the patients turning exactly 20 and exactly 30 today (proving
-    both boundaries are inclusive, not just the range's interior) while
-    excluding the ones turning 19 (too young) and 31 (too old).
+    after_result = await list_patients(db_session, PatientFilters(filters=[cond("created_date", "after", "2026-01-15")]))
+    assert {i.id for i in after_result.items} == {"pat_3"}
+
+
+async def test_list_patients_filters_age_covers_every_operator_at_the_boundary(db_session):
+    """The `age` operator family (`eq`/`ne`/`gt`/`gte`/`lt`/`lte`/`between`) all translate
+    to `date_of_birth` comparisons via the same already-correct inclusive-boundary
+    calculation -- tested here at the exact boundary (patients turning exactly 19, 20,
+    30, 31 today) so an off-by-one in any operator would show up immediately, the same
+    rigor the original `age_min`/`age_max` boundary test had.
     """
     today = date.today()
 
@@ -136,41 +186,78 @@ async def test_list_patients_filters_by_age_range_inclusive_at_both_boundaries(d
     ])
     await db_session.commit()
 
-    result = await list_patients(db_session, PatientFilters(age_min=20, age_max=30))
+    # gte=20 includes the boundary itself.
+    gte = await list_patients(db_session, PatientFilters(filters=[cond("age", "gte", "20")]))
+    assert {i.id for i in gte.items} == {"pat_20", "pat_30", "pat_31"}
 
-    assert {item.id for item in result.items} == {"pat_20", "pat_30"}
+    # gt=20 excludes the boundary itself.
+    gt = await list_patients(db_session, PatientFilters(filters=[cond("age", "gt", "20")]))
+    assert {i.id for i in gt.items} == {"pat_30", "pat_31"}
+
+    # lte=30 includes the boundary itself.
+    lte = await list_patients(db_session, PatientFilters(filters=[cond("age", "lte", "30")]))
+    assert {i.id for i in lte.items} == {"pat_19", "pat_20", "pat_30"}
+
+    # lt=30 excludes the boundary itself.
+    lt = await list_patients(db_session, PatientFilters(filters=[cond("age", "lt", "30")]))
+    assert {i.id for i in lt.items} == {"pat_19", "pat_20"}
+
+    # between=20..30 includes both boundaries (proves the same as the original combined test).
+    between = await list_patients(db_session, PatientFilters(filters=[cond("age", "between", "20", "30")]))
+    assert {i.id for i in between.items} == {"pat_20", "pat_30"}
+
+    # eq=20 matches only the exact-boundary patient.
+    eq = await list_patients(db_session, PatientFilters(filters=[cond("age", "eq", "20")]))
+    assert {i.id for i in eq.items} == {"pat_20"}
+
+    # ne=20 excludes only that one patient.
+    ne = await list_patients(db_session, PatientFilters(filters=[cond("age", "ne", "20")]))
+    assert {i.id for i in ne.items} == {"pat_19", "pat_30", "pat_31"}
 
 
-async def test_list_patients_filters_by_minimum_total_spent_inclusive_and_excludes_unpaid(db_session):
-    """min_total_spent_cents keeps patients whose PAID-only lifetime spend is at or above
-    the threshold (inclusive), for finding high-value patients.
-
-    pat_high has $500 paid (at the threshold -- proves inclusive, not strictly-greater).
-    pat_low has $499.99 paid (just under -- excluded). pat_unpaid has a $10,000 payment
-    that's still "pending" (not paid), so their real paid total is $0 -- excluded despite
-    a large nominal payment on file, same "paid-only" rule list_patients already applies
-    everywhere else. pat_none has no payments at all (NULL from the outer join, must be
-    treated as 0, not silently pass the filter) -- excluded.
+async def test_list_patients_filters_number_operators_on_aggregate_columns(db_session):
+    """The `number` operator family on the two aggregate-backed fields, `total_spent_cents`
+    and `appointment_count` -- both must treat a patient with no rows at all (NULL from
+    the outer join) as 0, not silently exclude/include them incorrectly.
     """
     db_session.add_all([
         make_patient(id="pat_high"), make_patient(id="pat_low"),
-        make_patient(id="pat_unpaid"), make_patient(id="pat_none"),
+        make_patient(id="pat_none"),
         make_provider(), make_service(),
         make_appointment(id="apt_high", patient_id="pat_high"),
         make_appointment(id="apt_low", patient_id="pat_low"),
-        make_appointment(id="apt_unpaid", patient_id="pat_unpaid"),
     ])
     await db_session.flush()
     db_session.add_all([
         make_payment(id="pay_high", patient_id="pat_high", appointment_id="apt_high", amount=50000, status="paid"),
         make_payment(id="pay_low", patient_id="pat_low", appointment_id="apt_low", amount=49999, status="paid"),
-        make_payment(id="pay_unpaid", patient_id="pat_unpaid", appointment_id="apt_unpaid", amount=1000000, status="pending"),
     ])
     await db_session.commit()
 
-    result = await list_patients(db_session, PatientFilters(min_total_spent_cents=50000))
+    gte_result = await list_patients(db_session, PatientFilters(filters=[cond("total_spent_cents", "gte", "50000")]))
+    assert {i.id for i in gte_result.items} == {"pat_high"}
 
-    assert {item.id for item in result.items} == {"pat_high"}
+    eq_zero_result = await list_patients(db_session, PatientFilters(filters=[cond("total_spent_cents", "eq", "0")]))
+    assert {i.id for i in eq_zero_result.items} == {"pat_none"}
+
+    between_result = await list_patients(db_session, PatientFilters(filters=[cond("total_spent_cents", "between", "1", "50000")]))
+    assert {i.id for i in between_result.items} == {"pat_high", "pat_low"}
+
+    appointment_count_result = await list_patients(db_session, PatientFilters(filters=[cond("appointment_count", "eq", "0")]))
+    assert {i.id for i in appointment_count_result.items} == {"pat_none"}
+
+
+async def test_list_patients_filter_rejects_unknown_field_and_bad_operator(db_session):
+    """An unknown filter field, or an operator that doesn't apply to a field's type,
+    raises `ValueError` (the router turns this into a 400) rather than silently matching
+    nothing or crashing with an unrelated SQL error.
+    """
+    with pytest.raises(ValueError, match="Unknown filter field"):
+        await list_patients(db_session, PatientFilters(filters=[cond("phone", "contains", "555")]))
+
+    with pytest.raises(ValueError, match="not valid for field"):
+        # "contains" is a text operator; "age" is a number field.
+        await list_patients(db_session, PatientFilters(filters=[cond("age", "contains", "30")]))
 
 
 async def test_get_patient_detail_returns_none_for_unknown_id(db_session):
@@ -345,7 +432,10 @@ async def test_get_patient_detail_all_context_scopes_previous_next_to_active_sor
     ])
     await db_session.commit()
 
-    context = PatientListContext(kind="all", filters=PatientFilters(source="instagram"), sort="total_spent")
+    context = PatientListContext(
+        kind="all", filters=PatientFilters(filters=[cond("source", "is", "instagram")]),
+        sort="total_spent_cents", sort_dir="desc",
+    )
 
     middle = await get_patient_detail(db_session, "pat_c", context=context)
     assert middle.previous_patient_id == "pat_a"
@@ -364,16 +454,50 @@ async def test_get_patient_detail_all_context_scopes_previous_next_to_active_sor
     assert global_order.previous_patient_id == "pat_c"
     assert global_order.next_patient_id is None
 
-    # min_total_spent_cents=$150 excludes pat_b ($100, below threshold) and
+    # total_spent_cents >= $150 excludes pat_b ($100, below threshold) and
     # pat_other_source ($0, no payment at all) from the ranking too, leaving only
     # pat_a ($300) and pat_c ($200) as each other's direct neighbors.
     high_spenders = PatientListContext(
-        kind="all", filters=PatientFilters(min_total_spent_cents=15000), sort="total_spent",
+        kind="all", filters=PatientFilters(filters=[cond("total_spent_cents", "gte", "15000")]),
+        sort="total_spent_cents", sort_dir="desc",
     )
     top_spender = await get_patient_detail(db_session, "pat_a", context=high_spenders)
     assert top_spender.previous_patient_id is None
     assert top_spender.next_patient_id == "pat_c"
 
+
+async def test_get_patient_detail_previous_next_respects_sort_direction_and_appointment_count_sort(db_session):
+    """Two things column-header click-to-sort specifically needs, that the older
+    fixed-direction dropdown never had to prove: (1) `sort_dir` genuinely flips the
+    order (not just a per-sort-option hardcoded direction), and (2) a newer sort key,
+    `appointment_count`, ranks Previous/Next correctly too -- this needed
+    `_neighbors_in_all_patients` to join the same `appointment_counts` aggregate
+    `list_patients` itself uses, which it didn't need to before appointment_count became
+    sortable.
+    """
+    db_session.add_all([
+        make_patient(id="pat_1"), make_patient(id="pat_2"), make_patient(id="pat_3"),
+        make_provider(), make_service(),
+        make_appointment(id="apt_1a", patient_id="pat_1"),
+        make_appointment(id="apt_2a", patient_id="pat_2"),
+        make_appointment(id="apt_2b", patient_id="pat_2"),
+        make_appointment(id="apt_3a", patient_id="pat_3"),
+        make_appointment(id="apt_3b", patient_id="pat_3"),
+        make_appointment(id="apt_3c", patient_id="pat_3"),
+    ])
+    await db_session.commit()
+
+    # Ascending: pat_1 (1) < pat_2 (2) < pat_3 (3).
+    asc_context = PatientListContext(sort="appointment_count", sort_dir="asc")
+    asc_middle = await get_patient_detail(db_session, "pat_2", context=asc_context)
+    assert asc_middle.previous_patient_id == "pat_1"
+    assert asc_middle.next_patient_id == "pat_3"
+
+    # Descending: the exact reverse order -- proves sort_dir, not just sort, is applied.
+    desc_context = PatientListContext(sort="appointment_count", sort_dir="desc")
+    desc_middle = await get_patient_detail(db_session, "pat_2", context=desc_context)
+    assert desc_middle.previous_patient_id == "pat_3"
+    assert desc_middle.next_patient_id == "pat_1"
 
 
 async def test_get_patient_detail_rebooking_context_scopes_previous_next_to_rebooking_order(db_session):
@@ -420,6 +544,12 @@ async def test_get_patient_detail_rebooking_context_scopes_previous_next_to_rebo
     first = await get_patient_detail(db_session, "pat_a", context=PatientListContext(kind="rebooking"))
     assert first.previous_patient_id is None
     assert first.next_patient_id == "pat_g"
+
+    # An explicit sort="name" overrides the worklist's own default order -- alphabetical
+    # here (Alpha, Gamma, Zeta) is the OPPOSITE of the visit-recency order asserted above.
+    by_name = await get_patient_detail(db_session, "pat_g", context=PatientListContext(kind="rebooking", sort="name", sort_dir="asc"))
+    assert by_name.previous_patient_id == "pat_b"  # "Amy Alpha" sorts before "Gale Gamma"
+    assert by_name.next_patient_id == "pat_a"  # "Zed Zeta" sorts after
 
 
 async def test_list_upcoming_appointments_anchors_to_first_of_second_to_last_data_month(db_session):
@@ -692,6 +822,42 @@ async def test_list_todays_appointments_sort_orders_by_patient_or_provider_name(
 
     by_provider_name = await list_todays_appointments(db_session, sort="provider_name")
     assert [item.patient_id for item in by_provider_name.items] == ["pat_z", "pat_a", "pat_m"]
+
+
+async def test_list_todays_appointments_sort_dir_flips_order_and_supports_service_and_status(db_session):
+    """`sort_dir` genuinely flips a schedule sort's order (not baked to one fixed
+    direction per sort key, as it was before column-header click-to-sort needed every
+    column to support both directions) -- and the newer `service_name`/`status` sort
+    keys work the same way as the older `time`/`patient_name`/`provider_name` ones.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a"), make_patient(id="pat_b"),
+        make_provider(),
+        make_service(id="svc_a", name="Consultation"),
+        make_service(id="svc_b", name="X-Ray"),
+        make_appointment(id="apt_a", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_b", patient_id="pat_b", status="pending"),
+        make_appointment(id="apt_later", patient_id="pat_a", status="confirmed"),  # sets the latest data month
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_a", service_id="svc_a", start=datetime(2026, 1, 1, 9, 0), end=datetime(2026, 1, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_b", service_id="svc_b", start=datetime(2026, 1, 1, 10, 0), end=datetime(2026, 1, 1, 10, 30)),
+        make_appointment_service(appointment_id="apt_later", service_id="svc_a", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    time_asc = await list_todays_appointments(db_session, sort="time", sort_dir="asc")
+    assert [item.patient_id for item in time_asc.items] == ["pat_a", "pat_b"]
+
+    time_desc = await list_todays_appointments(db_session, sort="time", sort_dir="desc")
+    assert [item.patient_id for item in time_desc.items] == ["pat_b", "pat_a"]
+
+    by_service_desc = await list_todays_appointments(db_session, sort="service_name", sort_dir="desc")
+    assert [item.service_name for item in by_service_desc.items] == ["X-Ray", "Consultation"]
+
+    by_status_asc = await list_todays_appointments(db_session, sort="status", sort_dir="asc")
+    assert [item.status for item in by_status_asc.items] == ["confirmed", "pending"]
 
 
 async def test_list_upcoming_appointments_filters_by_provider_using_that_providers_own_soonest_slot(db_session):
@@ -979,6 +1145,47 @@ async def test_list_rebooking_opportunities_selects_past_only_patients_sorted_mo
     assert result.items[0].last_appointment_date == datetime(2025, 12, 20, 9, 0)
     assert result.items[0].last_service_name == "Consultation"  # make_service()'s default name
     assert result.items[0].last_provider_name == "Dr Smith"  # make_provider()'s default name
+
+
+async def test_list_rebooking_opportunities_sort_and_sort_dir_support_every_column(db_session):
+    """Column-header click-to-sort needed this worklist to support more than its
+    original single fixed order -- `sort`/`sort_dir` cover `name` and the default
+    `last_appointment_date`, using names deliberately NOT in visit-recency order (pat_a
+    "Zed Zeta" visited most recently despite sorting last alphabetically) so a correct
+    result here proves the parameter is genuinely applied, not silently defaulted.
+    """
+    db_session.add_all([
+        make_patient(id="pat_a", first_name="Zed", last_name="Zeta"),
+        make_patient(id="pat_b", first_name="Amy", last_name="Alpha"),
+        make_patient(id="pat_c", first_name="Cara", last_name="Cortez"),  # sets the latest data months only
+        make_provider(), make_service(),
+        make_appointment(id="apt_a", patient_id="pat_a", status="confirmed"),
+        make_appointment(id="apt_b", patient_id="pat_b", status="confirmed"),
+        # Two further-out months (Jan and Feb 2026) anchor the reference date to Jan
+        # 2026 -- the second-to-last of three distinct months -- so pat_a/pat_b's own
+        # Dec 2025 visits land safely in the past instead of risking a false-positive
+        # "upcoming" flag via the has_upcoming anti-join (see the identical reasoning in
+        # test_get_patient_detail_rebooking_context_scopes_previous_next_to_rebooking_order).
+        make_appointment(id="apt_month_jan", patient_id="pat_c", status="confirmed"),
+        make_appointment(id="apt_month_feb", patient_id="pat_c", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_a", start=datetime(2025, 12, 20, 9, 0), end=datetime(2025, 12, 20, 9, 30)),
+        make_appointment_service(appointment_id="apt_b", start=datetime(2025, 12, 1, 9, 0), end=datetime(2025, 12, 1, 9, 30)),
+        make_appointment_service(appointment_id="apt_month_jan", start=datetime(2026, 1, 5, 10, 0), end=datetime(2026, 1, 5, 10, 30)),
+        make_appointment_service(appointment_id="apt_month_feb", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    default_order = await list_rebooking_opportunities(db_session)
+    assert [item.id for item in default_order.items] == ["pat_a", "pat_b"]  # most recent visit first
+
+    by_name_asc = await list_rebooking_opportunities(db_session, sort="name", sort_dir="asc")
+    assert [item.id for item in by_name_asc.items] == ["pat_b", "pat_a"]  # Alpha before Zeta
+
+    by_visit_date_asc = await list_rebooking_opportunities(db_session, sort="last_appointment_date", sort_dir="asc")
+    assert [item.id for item in by_visit_date_asc.items] == ["pat_b", "pat_a"]  # oldest visit first
 
 
 async def test_list_rebooking_opportunities_last_service_and_provider_come_from_the_latest_row_specifically(db_session):

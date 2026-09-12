@@ -10,7 +10,7 @@ service as "tools" over the data.
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Appointment, AppointmentService, Patient, Payment, Provider, Service
@@ -31,6 +31,7 @@ from app.schemas.patient import (
     UpcomingAppointmentsResponse,
     UpcomingPatientItem,
 )
+from app.schemas.patient_filters import ENUM_VALUES, FIELD_TYPES, OPERATORS_BY_TYPE, PatientFilterCondition
 
 
 def _years_before(from_date: date, years: int) -> date:
@@ -51,26 +52,19 @@ class PatientFilters:
     of the address only) but ONLY when the term contains "@" -- see
     `list_patients` for why a plain name-shaped term matching against email
     produced false-positive results in this dataset even after anchoring.
-    `source` and `gender` are exact-match filters. `created_from`/
-    `created_to` filter on `Patient.created_date` (inclusive on both ends —
-    `created_to` covers the entire day, not just midnight). `age_min`/
-    `age_max` filter on age *as of today*, computed from `date_of_birth`
-    (see `list_patients` for how an age range converts to a date-of-birth
-    range). `min_total_spent_cents` filters on lifetime spend (the same
-    *paid*-payments-only sum `list_patients` already computes as
-    `total_spent_cents`), for identifying high-value patients -- a patient
-    with no paid payments at all is treated as 0, not excluded outright.
-    All fields are optional; omitted filters are simply not applied.
+    It stays its own dedicated top-level field (not folded into `filters`
+    below) since it's a fast, single quick-search box, not a structured
+    per-column condition.
+
+    `filters` is the generic, per-column-type filter list -- see
+    `app.schemas.patient_filters` for the field/operator registry and
+    `_apply_generic_filters` for how each one becomes a WHERE clause. All
+    fields are optional; an empty `filters` list (the default) applies no
+    conditions.
     """
 
     search: str | None = None
-    source: str | None = None
-    gender: str | None = None
-    created_from: date | None = None
-    created_to: date | None = None
-    age_min: int | None = None
-    age_max: int | None = None
-    min_total_spent_cents: int | None = None
+    filters: list[PatientFilterCondition] = field(default_factory=list)
 
 
 @dataclass
@@ -80,11 +74,18 @@ class PatientListContext:
     same order the agent was actually looking at (the Rebooking worklist, a
     filtered/sorted All Patients view), not always one fixed global order.
 
-    `kind="all"` with the dataclass's own defaults (no filters, sort="name") reproduces
+    `kind="all"` with the dataclass's own defaults (no filters, `sort=None`) reproduces
     exactly the old fixed global `(last_name, first_name, id)` order -- so a direct link,
     a global-search result, or any other entry point with no real list context at all can
     simply omit this argument and still get sane, deterministic behavior. An unrecognized
     `kind` value falls back the same way, in `get_patient_detail` below.
+
+    `sort`/`sort_dir` default to `None`, not a literal value, because the SENSIBLE
+    default differs by `kind` -- "all" defaults to name-sorted, "rebooking" to
+    most-recent-visit-first -- and `get_patient_detail` is what actually knows which
+    kind it's resolving for; resolving `None` -> the right per-kind default there (not
+    here) is what keeps a rebooking link with no explicit sort still landing on its own
+    natural order instead of silently inheriting "all"'s.
 
     There used to be `kind="today"`/`"day"` variants too, for Today's Appointments and
     the Calendar day drill-down. Those schedules are one row per scheduled *service*, not
@@ -96,7 +97,8 @@ class PatientListContext:
 
     kind: str = "all"
     filters: PatientFilters = field(default_factory=PatientFilters)
-    sort: str = "name"
+    sort: str | None = None
+    sort_dir: str | None = None
 
 
 def _payment_totals_subquery():
@@ -116,7 +118,7 @@ def _payment_totals_subquery():
 def _last_appointment_subquery():
     """Each patient's most recent *scheduled visit time* (AppointmentService.start, not
     Appointment.created_date -- see list_patients). Shared the same way as
-    `_payment_totals_subquery`, for the "last_appointment_date" sort.
+    `_payment_totals_subquery`, for the "last_appointment_date" sort/filter.
     """
     return (
         select(Appointment.patient_id, func.max(AppointmentService.start).label("last_appointment_date"))
@@ -126,15 +128,188 @@ def _last_appointment_subquery():
     )
 
 
-def _apply_patient_filters(query, filters: PatientFilters, payment_totals_sq):
-    """Applies every `PatientFilters` field to `query` as a WHERE clause, exactly as
-    `list_patients` needs -- factored out so `_neighbors_in_all_patients` (Prev/Next)
-    filters candidates identically to however the Patient Table itself is currently
-    filtered, and the two can never silently drift apart.
+def _appointment_counts_subquery():
+    """Each patient's total appointment count. Factored out (rather than inlined only in
+    `list_patients`, as it originally was) now that `appointment_count` is also a
+    sort/filter key -- `_neighbors_in_all_patients` needs the identical subquery to keep
+    Prev/Next in agreement with the table whenever that sort/filter is active.
+    """
+    return (
+        select(Appointment.patient_id, func.count(Appointment.id).label("appointment_count"))
+        .group_by(Appointment.patient_id)
+        .subquery()
+    )
 
-    `payment_totals_sq` must already be joined onto `query` (both current callers do
-    this before calling here) -- needed for `min_total_spent_cents`, which filters on
-    that aggregate rather than a plain `Patient` column.
+
+def _validate_filter_condition(condition: PatientFilterCondition) -> None:
+    """Checks a filter condition against the field/operator registry in
+    `app.schemas.patient_filters` -- raises `ValueError` (the router turns this into a
+    400) for an unknown field, an operator that doesn't apply to that field's type, or an
+    enum value outside that field's known set. `PatientFilterCondition` itself already
+    validated the value/value2/values *shape* matches the operator; this is the second
+    pass that needs the field registry, which only this module (the query-building code)
+    and the router both need -- kept here, not duplicated in the router, so "is this
+    filter valid" is answered exactly once.
+    """
+    field_type = FIELD_TYPES.get(condition.field)
+    if field_type is None:
+        raise ValueError(f"Unknown filter field: {condition.field!r}")
+    if condition.operator not in OPERATORS_BY_TYPE[field_type]:
+        raise ValueError(f"Operator {condition.operator!r} is not valid for field {condition.field!r} (type {field_type})")
+    if field_type == "enum":
+        known = ENUM_VALUES[condition.field]
+        bad_values = [v for v in (condition.values or ([condition.value] if condition.value else [])) if v not in known]
+        if bad_values:
+            raise ValueError(f"Unknown value(s) {bad_values} for field {condition.field!r}")
+
+
+def _text_condition_clause(expr, condition: PatientFilterCondition):
+    """Builds the WHERE clause for a `text`-typed field (`name`, `email`) -- always
+    case-insensitive, matching this app's existing search behavior.
+    """
+    value = (condition.value or "").lower()
+    lowered = func.lower(expr)
+    if condition.operator == "contains":
+        return lowered.like(f"%{value}%")
+    if condition.operator == "not_contains":
+        return ~lowered.like(f"%{value}%")
+    if condition.operator == "equals":
+        return lowered == value
+    return lowered != value  # not_equals
+
+
+def _enum_condition_clause(column, condition: PatientFilterCondition):
+    """Builds the WHERE clause for an `enum`-typed field (`gender`, `source`)."""
+    if condition.operator == "is":
+        return column == condition.value
+    if condition.operator == "is_not":
+        return column != condition.value
+    if condition.operator == "is_any_of":
+        return column.in_(condition.values or [])
+    return column.notin_(condition.values or [])  # is_none_of
+
+
+def _number_condition_clause(column, condition: PatientFilterCondition):
+    """Builds the WHERE clause for a `number`-typed field (`age` is handled separately by
+    `_age_condition_clause`, since it needs a date-of-birth translation, not a plain
+    numeric comparison -- this is for the two aggregate-column fields,
+    `appointment_count`/`total_spent_cents`).
+    """
+    if condition.operator == "between":
+        v1, v2 = float(condition.value), float(condition.value2)
+        return column.between(min(v1, v2), max(v1, v2))
+    value = float(condition.value)
+    return {
+        "eq": column == value, "ne": column != value,
+        "gt": column > value, "gte": column >= value,
+        "lt": column < value, "lte": column <= value,
+    }[condition.operator]
+
+
+def _date_condition_clause(column, condition: PatientFilterCondition):
+    """Builds the WHERE clause for a `date`-typed field (`created_date`,
+    `last_appointment_date`), both of which are actually full `datetime` columns --
+    every comparison here is whole-day (e.g. "on" means anywhere in that day, "before"
+    means any time on an earlier day), the same `< upper_bound + 1 day` shape this app's
+    existing `created_from`/`created_to` filter already used, just generalized to every
+    operator instead of only a from/to pair.
+    """
+    def day(v: str) -> date:
+        return date.fromisoformat(v)
+
+    if condition.operator == "between":
+        lo, hi = sorted([day(condition.value), day(condition.value2)])
+        return and_(column >= lo, column < hi + timedelta(days=1))
+    d = day(condition.value)
+    if condition.operator == "on":
+        return and_(column >= d, column < d + timedelta(days=1))
+    if condition.operator == "not_on":
+        return ~and_(column >= d, column < d + timedelta(days=1))
+    if condition.operator == "before":
+        return column < d
+    if condition.operator == "after":
+        return column >= d + timedelta(days=1)
+    if condition.operator == "on_or_before":
+        return column < d + timedelta(days=1)
+    return column >= d  # on_or_after
+
+
+def _age_condition_clause(condition: PatientFilterCondition):
+    """Builds the WHERE clause for the `age` field -- age isn't a real column (it's
+    computed from `date_of_birth` as of today), so every operator translates into a
+    `date_of_birth` comparison. `_at_least`/`_at_most` reuse the exact inclusive-boundary
+    math this app's original `age_min`/`age_max` filter already used and had a dedicated
+    boundary test for (see `test_list_patients_filters_by_age_range_inclusive_at_both_boundaries`)
+    -- every other operator is expressed in terms of those same two building blocks, so
+    a single already-correct boundary calculation backs all seven operators instead of
+    each reimplementing its own (and risking its own off-by-one).
+    """
+    today = date.today()
+
+    def at_least(n: int):  # age >= n, inclusive
+        cutoff = _years_before(today, n)
+        return Patient.date_of_birth < cutoff + timedelta(days=1)
+
+    def at_most(n: int):  # age <= n, inclusive
+        cutoff = _years_before(today, n + 1)
+        return Patient.date_of_birth >= cutoff + timedelta(days=1)
+
+    if condition.operator == "between":
+        lo, hi = sorted([int(condition.value), int(condition.value2)])
+        return and_(at_least(lo), at_most(hi))
+    n = int(condition.value)
+    if condition.operator == "eq":
+        return and_(at_least(n), at_most(n))
+    if condition.operator == "ne":
+        return ~and_(at_least(n), at_most(n))
+    if condition.operator == "gt":
+        return at_least(n + 1)
+    if condition.operator == "gte":
+        return at_least(n)
+    if condition.operator == "lt":
+        return at_most(n - 1)
+    return at_most(n)  # lte
+
+
+def _apply_generic_filters(query, conditions: list[PatientFilterCondition], payment_totals_sq, appointment_counts_sq, last_appointment_sq):
+    """Applies every generic `{field, operator, value}` condition to `query` as a WHERE
+    clause -- the per-column-type dispatch that replaces the old fixed named-field
+    filters. `payment_totals_sq`/`appointment_counts_sq`/`last_appointment_sq` must
+    already be joined onto `query` (both callers do this before calling here), since
+    `total_spent_cents`/`appointment_count`/`last_appointment_date` filter on those
+    aggregates rather than a plain `Patient` column.
+    """
+    for condition in conditions:
+        _validate_filter_condition(condition)
+        if condition.field == "name":
+            query = query.where(_text_condition_clause(Patient.first_name + " " + Patient.last_name, condition))
+        elif condition.field == "email":
+            query = query.where(_text_condition_clause(Patient.email, condition))
+        elif condition.field == "age":
+            query = query.where(_age_condition_clause(condition))
+        elif condition.field == "gender":
+            query = query.where(_enum_condition_clause(Patient.gender, condition))
+        elif condition.field == "source":
+            query = query.where(_enum_condition_clause(Patient.source, condition))
+        elif condition.field == "created_date":
+            query = query.where(_date_condition_clause(Patient.created_date, condition))
+        elif condition.field == "appointment_count":
+            # A patient with zero appointments has NULL here (outer join) -- must count
+            # as 0, not be silently excluded from e.g. an "appointment_count = 0" filter.
+            query = query.where(_number_condition_clause(func.coalesce(appointment_counts_sq.c.appointment_count, 0), condition))
+        elif condition.field == "total_spent_cents":
+            # Same NULL-as-0 reasoning as appointment_count above.
+            query = query.where(_number_condition_clause(func.coalesce(payment_totals_sq.c.total_spent_cents, 0), condition))
+        elif condition.field == "last_appointment_date":
+            query = query.where(_date_condition_clause(last_appointment_sq.c.last_appointment_date, condition))
+    return query
+
+
+def _apply_patient_filters(query, filters: PatientFilters, payment_totals_sq, appointment_counts_sq, last_appointment_sq):
+    """Applies `filters.search` plus every generic filter condition to `query` -- factored
+    out so `_neighbors_in_all_patients` (Prev/Next) filters candidates identically to
+    however the Patient Table itself is currently filtered, and the two can never
+    silently drift apart.
     """
     if filters.search:
         term = filters.search.lower()
@@ -152,51 +327,61 @@ def _apply_patient_filters(query, filters: PatientFilters, payment_totals_sq):
             query = query.where(name_or_phone_match | func.lower(Patient.email).like(f"{term}%"))
         else:
             query = query.where(name_or_phone_match)
-    if filters.source:
-        query = query.where(Patient.source == filters.source)
-    if filters.gender:
-        query = query.where(Patient.gender == filters.gender)
-    if filters.created_from:
-        query = query.where(Patient.created_date >= filters.created_from)
-    if filters.created_to:
-        query = query.where(Patient.created_date < filters.created_to + timedelta(days=1))
-    if filters.age_min is not None:
-        cutoff = _years_before(date.today(), filters.age_min)
-        query = query.where(Patient.date_of_birth < cutoff + timedelta(days=1))
-    if filters.age_max is not None:
-        cutoff = _years_before(date.today(), filters.age_max + 1)
-        query = query.where(Patient.date_of_birth >= cutoff + timedelta(days=1))
-    if filters.min_total_spent_cents is not None:
-        # A patient with no paid payments at all has NULL here (outer join), which must
-        # count as 0 -- otherwise they'd silently pass a "min spent >= 0" filter instead
-        # of being correctly excluded.
-        query = query.where(
-            func.coalesce(payment_totals_sq.c.total_spent_cents, 0) >= filters.min_total_spent_cents
-        )
+    query = _apply_generic_filters(query, filters.filters, payment_totals_sq, appointment_counts_sq, last_appointment_sq)
     return query
 
 
-def _patient_sort_expressions(sort: str, payment_totals_sq, last_appointment_sq) -> tuple:
-    """Maps a `sort` value to its ORDER BY expression(s), always ending in `Patient.id` as
-    a final tiebreaker. Without it, patients sharing a sort value (same last name, same
-    total spent, etc.) had no guaranteed stable order -- risking pagination that skips or
-    repeats rows across pages, and (now) a Prev/Next window ranking that could disagree
-    with what the table itself actually displays. Shared by `list_patients` and
-    `_neighbors_in_all_patients` so they always agree.
+def _patient_sort_expressions(sort: str, direction: str, payment_totals_sq, appointment_counts_sq, last_appointment_sq) -> tuple:
+    """Maps a `(sort, direction)` pair to its ORDER BY expression(s), always ending in
+    `Patient.id` as a final tiebreaker. Without it, patients sharing a sort value (same
+    last name, same total spent, etc.) had no guaranteed stable order -- risking
+    pagination that skips or repeats rows across pages, and a Prev/Next window ranking
+    that could disagree with what the table itself actually displays. Shared by
+    `list_patients` and `_neighbors_in_all_patients` so they always agree.
+
+    `direction` ("asc"/"desc") is a genuine per-request choice now (this used to bake a
+    fixed direction into each named sort option, e.g. "newest first" always meaning
+    `created_date.desc()` with no ascending equivalent) -- needed once column-header
+    click-to-sort replaced the old fixed dropdown, since every column has to support
+    both directions the same way a spreadsheet column header does.
+
+    `age` is the one field where the sort direction doesn't just forward onto its
+    backing column's own direction: age counts UP as `date_of_birth` counts DOWN (an
+    older person has an EARLIER birth date), so "youngest first" (age ascending) is
+    `date_of_birth.desc()`, not `.asc()` -- every other field's direction maps straight
+    onto its own column/expression.
     """
-    options = {
-        "name": (Patient.last_name.asc(), Patient.first_name.asc()),
-        "created_date": (Patient.created_date.desc(),),
-        "total_spent": (func.coalesce(payment_totals_sq.c.total_spent_cents, 0).desc(),),
-        "last_appointment_date": (last_appointment_sq.c.last_appointment_date.desc(),),
-    }
-    return options.get(sort, options["name"]) + (Patient.id.asc(),)
+    is_desc = direction == "desc"
+
+    def d(expr):
+        return expr.desc() if is_desc else expr.asc()
+
+    if sort == "email":
+        exprs = (d(Patient.email),)
+    elif sort == "age":
+        exprs = (Patient.date_of_birth.asc() if is_desc else Patient.date_of_birth.desc(),)
+    elif sort == "gender":
+        exprs = (d(Patient.gender),)
+    elif sort == "source":
+        exprs = (d(Patient.source),)
+    elif sort == "created_date":
+        exprs = (d(Patient.created_date),)
+    elif sort == "appointment_count":
+        exprs = (d(func.coalesce(appointment_counts_sq.c.appointment_count, 0)),)
+    elif sort == "total_spent_cents":
+        exprs = (d(func.coalesce(payment_totals_sq.c.total_spent_cents, 0)),)
+    elif sort == "last_appointment_date":
+        exprs = (d(last_appointment_sq.c.last_appointment_date),)
+    else:  # "name", and the fallback for an unrecognized sort key
+        exprs = (d(Patient.last_name), d(Patient.first_name))
+    return exprs + (Patient.id.asc(),)
 
 
 async def list_patients(
     db: AsyncSession,
     filters: PatientFilters,
     sort: str = "name",
+    sort_dir: str = "asc",
     page: int = 1,
     page_size: int = 25,
 ) -> PatientListResponse:
@@ -222,11 +407,7 @@ async def list_patients(
     Returns a `PatientListResponse` containing the page of items plus
     total count (for pagination controls) and the echoed page/page_size.
     """
-    appointment_counts = (
-        select(Appointment.patient_id, func.count(Appointment.id).label("appointment_count"))
-        .group_by(Appointment.patient_id)
-        .subquery()
-    )
+    appointment_counts = _appointment_counts_subquery()
     # "Last appointment" means the most recent *scheduled visit time*, which
     # lives on AppointmentService.start -- NOT Appointment.created_date
     # (when the booking record was entered into the system, an
@@ -254,7 +435,7 @@ async def list_patients(
     # search terms that already look like an email address, anchored to the
     # start of the address only (this dataset's random email local-parts
     # otherwise produce false-positive matches against plain name searches).
-    query = _apply_patient_filters(query, filters, payment_totals)
+    query = _apply_patient_filters(query, filters, payment_totals, appointment_counts, last_appointment)
 
     # Count matching rows (post-filter) for pagination metadata, without pulling all rows.
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
@@ -262,7 +443,7 @@ async def list_patients(
     # See `_patient_sort_expressions` for why every sort ends in a
     # `Patient.id` tiebreaker -- without it, ties (e.g. two patients sharing
     # a last name) had no guaranteed stable order across pages.
-    query = query.order_by(*_patient_sort_expressions(sort, payment_totals, last_appointment))
+    query = query.order_by(*_patient_sort_expressions(sort, sort_dir, payment_totals, appointment_counts, last_appointment))
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     rows = (await db.execute(query)).all()
@@ -282,11 +463,11 @@ async def list_patients(
 
 
 async def _neighbors_in_all_patients(
-    db: AsyncSession, patient_id: str, filters: PatientFilters, sort: str,
+    db: AsyncSession, patient_id: str, filters: PatientFilters, sort: str, sort_dir: str,
 ) -> tuple[str | None, str | None]:
     """Previous/Next `Patient.id` for `get_patient_detail`'s `kind="all"` context: the
     patient immediately before/after `patient_id` in the exact filtered+sorted order
-    `list_patients` would display for these same `filters`/`sort`.
+    `list_patients` would display for these same `filters`/`sort`/`sort_dir`.
 
     Ranks every matching patient with `ROW_NUMBER() OVER (ORDER BY ...)` (using the same
     filter/sort building blocks `list_patients` itself uses, so the two can never
@@ -296,14 +477,16 @@ async def _neighbors_in_all_patients(
     "previous/next" for a patient that isn't actually in the list being scoped to.
     """
     payment_totals = _payment_totals_subquery()
+    appointment_counts = _appointment_counts_subquery()
     last_appointment = _last_appointment_subquery()
     base = (
         select(Patient.id)
         .outerjoin(payment_totals, payment_totals.c.patient_id == Patient.id)
+        .outerjoin(appointment_counts, appointment_counts.c.patient_id == Patient.id)
         .outerjoin(last_appointment, last_appointment.c.patient_id == Patient.id)
     )
-    base = _apply_patient_filters(base, filters, payment_totals)
-    order_exprs = _patient_sort_expressions(sort, payment_totals, last_appointment)
+    base = _apply_patient_filters(base, filters, payment_totals, appointment_counts, last_appointment)
+    order_exprs = _patient_sort_expressions(sort, sort_dir, payment_totals, appointment_counts, last_appointment)
     ranked = base.add_columns(func.row_number().over(order_by=order_exprs).label("rn")).subquery()
 
     current_rn = (await db.execute(select(ranked.c.rn).where(ranked.c.id == patient_id))).scalar_one_or_none()
@@ -438,10 +621,17 @@ async def get_patient_detail(
     # still gets sane, deterministic neighbors.
     context = context or PatientListContext()
     if context.kind == "rebooking":
-        previous_patient_id, next_patient_id = await _neighbors_in_rebooking(db, patient_id)
+        # This worklist's own natural default (most-recent-visit-first) -- see
+        # `PatientListContext.sort`'s docstring for why that default lives here, not on
+        # the dataclass itself (it differs from "all"'s own default just below).
+        sort = context.sort or "last_appointment_date"
+        sort_dir = context.sort_dir or "desc"
+        previous_patient_id, next_patient_id = await _neighbors_in_rebooking(db, patient_id, sort, sort_dir)
     else:
+        sort = context.sort or "name"
+        sort_dir = context.sort_dir or "asc"
         previous_patient_id, next_patient_id = await _neighbors_in_all_patients(
-            db, patient_id, context.filters, context.sort,
+            db, patient_id, context.filters, sort, sort_dir,
         )
 
     return PatientDetailResponse(
@@ -495,24 +685,39 @@ async def get_reference_now(db: AsyncSession) -> datetime:
     return latest_two_months[1]  # index 0 is the latest month; 1 is the one before it
 
 
-def _schedule_sort_expressions(sort: str) -> tuple:
-    """Maps a schedule `sort` value to its ORDER BY expression(s), always ending in
-    `AppointmentService.id` as a tiebreaker -- same reasoning as `_patient_sort_expressions`,
-    just for schedule rows. Shared by `_list_schedule_between` and
-    `app.repositories.appointments._neighbors_in_schedule` so a schedule row's Previous/
-    Next always walks the exact same order the list itself is displayed in.
+def _schedule_sort_expressions(sort: str, direction: str = "asc") -> tuple:
+    """Maps a schedule `(sort, direction)` pair to its ORDER BY expression(s), always
+    ending in `AppointmentService.id` as a tiebreaker -- same reasoning as
+    `_patient_sort_expressions`, just for schedule rows. Shared by `_list_schedule_between`
+    and `app.repositories.appointments._neighbors_in_schedule` so a schedule row's
+    Previous/Next always walks the exact same order the list itself is displayed in.
+
+    `direction` ("asc"/"desc") is a genuine per-request choice, matching every other
+    click-to-sort column in this app -- "time" defaults to ascending (the schedule's
+    natural chronological reading order) but can be flipped the same as any other column.
     """
-    options = {
-        "time": (AppointmentService.start.asc(),),
-        "patient_name": (Patient.last_name.asc(), Patient.first_name.asc()),
-        "provider_name": (Provider.last_name.asc(), Provider.first_name.asc(), AppointmentService.start.asc()),
-    }
-    return options.get(sort, options["time"]) + (AppointmentService.id.asc(),)
+    is_desc = direction == "desc"
+
+    def d(expr):
+        return expr.desc() if is_desc else expr.asc()
+
+    if sort == "patient_name":
+        exprs = (d(Patient.last_name), d(Patient.first_name))
+    elif sort == "provider_name":
+        exprs = (d(Provider.last_name), d(Provider.first_name), AppointmentService.start.asc())
+    elif sort == "service_name":
+        exprs = (d(Service.name),)
+    elif sort == "status":
+        exprs = (d(Appointment.status),)
+    else:  # "time", and the fallback for an unrecognized sort key
+        exprs = (d(AppointmentService.start),)
+    return exprs + (AppointmentService.id.asc(),)
 
 
 async def _list_schedule_between(
     db: AsyncSession, start_of_day: datetime, end_of_day: datetime, reference_date: date,
-    page: int, page_size: int, provider_id: str | None, service_id: str | None = None, sort: str = "time",
+    page: int, page_size: int, provider_id: str | None, service_id: str | None = None,
+    sort: str = "time", sort_dir: str = "asc",
 ) -> TodaysAppointmentsResponse:
     """Shared query behind `list_todays_appointments` and `list_schedule_for_date`: every
     scheduled service (one row per `AppointmentService`, not per `Appointment` -- see
@@ -546,7 +751,7 @@ async def _list_schedule_between(
     # exact same timestamp, common in this seed data) -- so the display order here and
     # the row ranking in `app.repositories.appointments`'s Previous/Next (for the
     # Appointment Detail page a schedule row links to) always agree.
-    query = query.order_by(*_schedule_sort_expressions(sort))
+    query = query.order_by(*_schedule_sort_expressions(sort, sort_dir))
     query = query.offset((page - 1) * page_size).limit(page_size)
     rows = (await db.execute(query)).all()
 
@@ -567,7 +772,7 @@ async def _list_schedule_between(
 
 async def list_todays_appointments(
     db: AsyncSession, page: int = 1, page_size: int = 100, provider_id: str | None = None,
-    service_id: str | None = None, sort: str = "time",
+    service_id: str | None = None, sort: str = "time", sort_dir: str = "asc",
 ) -> TodaysAppointmentsResponse:
     """List every scheduled service occurring on the reference "today", for the front desk's
     at-a-glance daily schedule -- see `get_reference_now` for what "today" means
@@ -590,13 +795,13 @@ async def list_todays_appointments(
     reference_date = reference_now.date()
     end_of_day = reference_now + timedelta(days=1)
     return await _list_schedule_between(
-        db, reference_now, end_of_day, reference_date, page, page_size, provider_id, service_id, sort,
+        db, reference_now, end_of_day, reference_date, page, page_size, provider_id, service_id, sort, sort_dir,
     )
 
 
 async def list_schedule_for_date(
     db: AsyncSession, target_date: date, page: int = 1, page_size: int = 100, provider_id: str | None = None,
-    service_id: str | None = None, sort: str = "time",
+    service_id: str | None = None, sort: str = "time", sort_dir: str = "asc",
 ) -> TodaysAppointmentsResponse:
     """List every scheduled service on an arbitrary day, for the Calendar view's drill-down
     (click a day, see that day's schedule) -- the same shape and semantics as
@@ -605,7 +810,7 @@ async def list_schedule_for_date(
     start_of_day = datetime.combine(target_date, time.min)
     end_of_day = start_of_day + timedelta(days=1)
     return await _list_schedule_between(
-        db, start_of_day, end_of_day, target_date, page, page_size, provider_id, service_id, sort,
+        db, start_of_day, end_of_day, target_date, page, page_size, provider_id, service_id, sort, sort_dir,
     )
 
 
@@ -795,8 +1000,40 @@ def _rebooking_subqueries(reference_now: datetime):
     return has_upcoming, last_visit
 
 
+def _rebooking_sort_expressions(sort: str, direction: str, last_visit_sq) -> tuple:
+    """Maps a rebooking-worklist `(sort, direction)` pair to its ORDER BY expression(s),
+    always ending in `Patient.id` as a tiebreaker -- same reasoning as
+    `_patient_sort_expressions`/`_schedule_sort_expressions`. Shared by
+    `list_rebooking_opportunities` and `_neighbors_in_rebooking` so they always agree.
+
+    Column-header click-to-sort needed this worklist to support more than its original
+    single fixed order (most-recent-visit-first) -- `name`/`email` sort on the patient
+    themselves; `last_service_name`/`last_provider_name` sort on that same most-recent
+    visit's own service/provider (from `last_visit_sq`, the same subquery the worklist's
+    columns are already populated from); `last_appointment_date` (the default) sorts on
+    that visit's own date.
+    """
+    is_desc = direction == "desc"
+
+    def d(expr):
+        return expr.desc() if is_desc else expr.asc()
+
+    if sort == "name":
+        exprs = (d(Patient.last_name), d(Patient.first_name))
+    elif sort == "email":
+        exprs = (d(Patient.email),)
+    elif sort == "last_service_name":
+        exprs = (d(last_visit_sq.c.service_name),)
+    elif sort == "last_provider_name":
+        exprs = (d(last_visit_sq.c.provider_last_name), d(last_visit_sq.c.provider_first_name))
+    else:  # "last_appointment_date", and the fallback for an unrecognized sort key
+        exprs = (d(last_visit_sq.c.start),)
+    return exprs + (Patient.id.asc(),)
+
+
 async def list_rebooking_opportunities(
     db: AsyncSession, page: int = 1, page_size: int = 25,
+    sort: str = "last_appointment_date", sort_dir: str = "desc",
 ) -> RebookingOpportunitiesResponse:
     """List patients who have been seen before but have nothing scheduled going forward --
     the front desk's outreach/rebooking worklist, not just a demographic filter.
@@ -829,9 +1066,7 @@ async def list_rebooking_opportunities(
         .join(last_visit, last_visit.c.patient_id == Patient.id)
         .outerjoin(has_upcoming, has_upcoming.c.patient_id == Patient.id)
         .where(has_upcoming.c.patient_id.is_(None))
-        # `Patient.id` breaks ties between patients whose most recent visit started at the
-        # exact same timestamp, so this order and `_neighbors_in_rebooking`'s ranking agree.
-        .order_by(last_visit.c.start.desc(), Patient.id.asc())
+        .order_by(*_rebooking_sort_expressions(sort, sort_dir, last_visit))
     )
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
@@ -852,11 +1087,14 @@ async def list_rebooking_opportunities(
     )
 
 
-async def _neighbors_in_rebooking(db: AsyncSession, patient_id: str) -> tuple[str | None, str | None]:
+async def _neighbors_in_rebooking(
+    db: AsyncSession, patient_id: str, sort: str = "last_appointment_date", sort_dir: str = "desc",
+) -> tuple[str | None, str | None]:
     """Previous/Next `Patient.id` for `get_patient_detail`'s `kind="rebooking"` context:
-    the patient immediately before/after `patient_id` in the same most-recent-visit-first
-    order `list_rebooking_opportunities` displays. Returns `(None, None)` if `patient_id`
-    no longer qualifies for the worklist at all (e.g. they've since been rebooked).
+    the patient immediately before/after `patient_id` in the same `(sort, sort_dir)`
+    order `list_rebooking_opportunities` displays (most-recent-visit-first by default).
+    Returns `(None, None)` if `patient_id` no longer qualifies for the worklist at all
+    (e.g. they've since been rebooked).
     """
     reference_now = await get_reference_now(db)
     has_upcoming, last_visit = _rebooking_subqueries(reference_now)
@@ -867,7 +1105,7 @@ async def _neighbors_in_rebooking(db: AsyncSession, patient_id: str) -> tuple[st
         .where(has_upcoming.c.patient_id.is_(None))
     )
     ranked = base.add_columns(
-        func.row_number().over(order_by=(last_visit.c.start.desc(), Patient.id.asc())).label("rn")
+        func.row_number().over(order_by=_rebooking_sort_expressions(sort, sort_dir, last_visit)).label("rn")
     ).subquery()
 
     current_rn = (await db.execute(select(ranked.c.rn).where(ranked.c.id == patient_id))).scalar_one_or_none()

@@ -10,6 +10,7 @@
 
 import { useRouter } from "next/navigation";
 
+import { SortableTableHeader } from "@/components/SortableTableHeader";
 import { appointmentDetailHref } from "@/lib/api";
 import type { AppointmentDetailContext, TodaysAppointmentsResponse } from "@/lib/types";
 import { APPOINTMENT_STATUS_COLORS } from "@/lib/chartColors";
@@ -36,6 +37,9 @@ interface Props {
   providerId: string | undefined;
   serviceId: string | undefined;
   sort: string | undefined;
+  sortDir: string | undefined;
+  /** Called with a column's sort key when its header is clicked -- see `SortableTableHeader`. */
+  onSort: (key: string) => void;
   date?: string;
   /** Whether a provider/service filter is currently active -- shows a "Clear filters" action in the empty state when true. */
   hasActiveFilters: boolean;
@@ -94,20 +98,22 @@ function EmptyState({ message, hasActiveFilters, onClearFilters }: { message: st
 
 export function ScheduleTable({
   data, isLoading, isError, page, onPageChange, loadingMessage, errorMessage, emptyMessage,
-  contextKind, providerId, serviceId, sort, date, hasActiveFilters, onClearFilters,
+  contextKind, providerId, serviceId, sort, sortDir, onSort, date, hasActiveFilters, onClearFilters,
 }: Props) {
   const router = useRouter();
+  const activeSort = sort ?? "time";
+  const activeDir = sortDir ?? "asc";
 
   // `rowServiceId` (the specific AppointmentService row, i.e. `item.id`) is filled in per
   // row below -- an appointment can have more than one service on the same schedule, so
   // the row actually clicked has to be pinned down, not just the appointment. `serviceId`
-  // (this table's own service *filter*, a `Service.id` string) and `sort` are threaded
-  // through too, so the destination's Previous/Next walk this exact same filtered/sorted
-  // schedule -- see `AppointmentDetailContext.filterServiceId`/`.sort`.
+  // (this table's own service *filter*, a `Service.id` string) and `sort`/`sortDir` are
+  // threaded through too, so the destination's Previous/Next walk this exact same
+  // filtered/sorted schedule -- see `AppointmentDetailContext.filterServiceId`/`.sort`.
   const contextFor = (rowServiceId: number): AppointmentDetailContext =>
     contextKind === "today"
-      ? { kind: "today", providerId, filterServiceId: serviceId, sort, serviceId: rowServiceId }
-      : { kind: "day", date: date as string, providerId, filterServiceId: serviceId, sort, serviceId: rowServiceId };
+      ? { kind: "today", providerId, filterServiceId: serviceId, sort: activeSort, sortDir: activeDir, serviceId: rowServiceId }
+      : { kind: "day", date: date as string, providerId, filterServiceId: serviceId, sort: activeSort, sortDir: activeDir, serviceId: rowServiceId };
 
   return (
     <>
@@ -133,12 +139,12 @@ export function ScheduleTable({
             <table className="w-full text-sm">
               <thead className="text-left text-brand-dark">
                 <tr className="border-b border-brand-gold/20">
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Time</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Patient</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Phone</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Service</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Provider</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/50">Status</th>
+                  <SortableTableHeader label="Time" sortKey="time" activeSort={activeSort} activeDir={activeDir} onSort={onSort} />
+                  <SortableTableHeader label="Patient" sortKey="patient_name" activeSort={activeSort} activeDir={activeDir} onSort={onSort} />
+                  <SortableTableHeader label="Phone" activeSort={activeSort} activeDir={activeDir} onSort={onSort} />
+                  <SortableTableHeader label="Service" sortKey="service_name" activeSort={activeSort} activeDir={activeDir} onSort={onSort} />
+                  <SortableTableHeader label="Provider" sortKey="provider_name" activeSort={activeSort} activeDir={activeDir} onSort={onSort} />
+                  <SortableTableHeader label="Status" sortKey="status" activeSort={activeSort} activeDir={activeDir} onSort={onSort} />
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-dark/5 text-brand-dark">

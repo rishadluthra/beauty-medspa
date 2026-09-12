@@ -256,6 +256,14 @@ async def test_get_appointment_detail_sort_changes_previous_next_order(db_sessio
     assert result.previous_appointment_id == "apt_a"
     assert result.next_appointment_id == "apt_z"
 
+    # sort_dir="desc" reverses the same sort key's order (Zeta, Mid, Alpha) -- proves
+    # direction, not just the sort key itself, is honored in Previous/Next too.
+    desc_result = await get_appointment_detail(
+        db_session, "apt_m", m_service_id, ScheduleContext(sort="patient_name", sort_dir="desc"),
+    )
+    assert desc_result.previous_appointment_id == "apt_z"
+    assert desc_result.next_appointment_id == "apt_a"
+
 
 async def test_get_appointment_detail_day_context_targets_the_given_date_not_the_reference_day(db_session):
     """`ScheduleContext(kind="day", target_date=...)` scopes Previous/Next to that
