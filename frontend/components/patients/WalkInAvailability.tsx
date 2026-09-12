@@ -14,18 +14,18 @@
  * `app.repositories.availability` module docstring), so there's no
  * "which providers do this service" filter to apply here; all providers
  * are always checked.
+ *
+ * `serviceId`/`at` are owned by `PatientsPage` and passed in here as props,
+ * not local state -- the picker for these lives in `WalkInControls`, rendered
+ * in the shared tab row (see that component's docstring for why), so both it
+ * and this results view need to share the same values.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { BRAND } from "@/lib/chartColors";
-import { formatCents } from "@/lib/format";
-
-/** Shared styling for the date/time inputs -- matches the service <select> beside them. */
-const fieldClassName =
-  "rounded-lg border border-brand-dark/10 bg-brand-dark/5 px-3 py-2 text-sm text-brand-dark outline-none transition-colors focus:ring-2 focus:ring-brand-gold/50";
 
 function AvailabilityBadge({ available }: { available: boolean }) {
   return (
@@ -38,23 +38,13 @@ function AvailabilityBadge({ available }: { available: boolean }) {
   );
 }
 
-export function WalkInAvailability() {
-  const [serviceId, setServiceId] = useState<string | undefined>(undefined);
-  const [at, setAt] = useState<string | undefined>(undefined);
+interface Props {
+  serviceId: string | undefined;
+  at: string | undefined;
+  onAtChange: (at: string) => void;
+}
 
-  const { data: services, isLoading: servicesLoading, isError: servicesError } = useQuery({
-    queryKey: ["services"],
-    queryFn: () => api.getServices(),
-  });
-
-  // Default to the first (alphabetically) service once the list loads --
-  // afterward, the dropdown fully owns this value.
-  useEffect(() => {
-    if (services && services.items.length > 0 && serviceId === undefined) {
-      setServiceId(services.items[0].id);
-    }
-  }, [services, serviceId]);
-
+export function WalkInAvailability({ serviceId, at, onAtChange }: Props) {
   const { data: availability, isLoading: availabilityLoading, isError: availabilityError } = useQuery({
     queryKey: ["availability", serviceId, at],
     queryFn: () => api.getAvailability({ service_id: serviceId as string, at }),
@@ -79,69 +69,14 @@ export function WalkInAvailability() {
       const now = new Date();
       const hh = String(now.getHours()).padStart(2, "0");
       const mm = String(now.getMinutes()).padStart(2, "0");
-      setAt(`${referenceDay}T${hh}:${mm}:00`);
+      onAtChange(`${referenceDay}T${hh}:${mm}:00`);
     }
-  }, [availability, at]);
+  }, [availability, at, onAtChange]);
 
   const availableCount = availability?.providers.filter((p) => p.available).length ?? 0;
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-4 text-brand-dark shadow-lg shadow-brand-gold/10 sm:p-6">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-xs font-medium text-brand-dark/60">Service</span>
-            <select
-              className="rounded-lg border border-brand-dark/10 bg-brand-dark/5 px-3 py-2 text-sm text-brand-dark outline-none transition-colors focus:ring-2 focus:ring-brand-gold/50"
-              value={serviceId ?? ""}
-              onChange={(e) => setServiceId(e.target.value)}
-              disabled={servicesLoading || !services?.items.length}
-            >
-              {services?.items.map((service) => (
-                <option key={service.id} value={service.id}>
-                  {service.name} ({service.duration} min, {formatCents(service.price_cents)})
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="flex flex-col gap-1 text-sm">
-            <span className="text-xs font-medium text-brand-dark/60">Check availability at</span>
-            {/*
-              Separate native `date`/`time` inputs instead of one combined
-              `datetime-local` field. A picker's actual look is entirely up
-              to the browser engine, not this code -- Safari already renders
-              `datetime-local` close to the native macOS/iOS calendar and
-              wheel pickers, but Chrome renders it as a cramped little
-              stepper. Splitting into two plain inputs gets Chrome's own
-              (much cleaner) native calendar popup for the date half too.
-            */}
-            <div className="flex gap-2">
-              <label className="sr-only" htmlFor="walkin-date">Date</label>
-              <input
-                id="walkin-date"
-                type="date"
-                className={fieldClassName}
-                value={at ? at.slice(0, 10) : ""}
-                onChange={(e) => e.target.value && at && setAt(`${e.target.value}T${at.slice(11, 16)}:00`)}
-                disabled={at === undefined}
-              />
-              <label className="sr-only" htmlFor="walkin-time">Time</label>
-              <input
-                id="walkin-time"
-                type="time"
-                className={fieldClassName}
-                value={at ? at.slice(11, 16) : ""}
-                onChange={(e) => e.target.value && at && setAt(`${at.slice(0, 10)}T${e.target.value}:00`)}
-                disabled={at === undefined}
-              />
-            </div>
-          </div>
-        </div>
-
-        {servicesError && <p className="mt-3 text-rust">Could not load services. Please try again.</p>}
-      </div>
-
       {availabilityLoading && <p className="text-brand-bg/70">Checking availability…</p>}
       {availabilityError && <p className="text-coral">Could not check availability. Please try again.</p>}
 

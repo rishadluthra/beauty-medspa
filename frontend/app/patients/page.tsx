@@ -51,6 +51,13 @@
  * `calendarFilters`) purely so this row knows whether Calendar is
  * currently showing its Day View -- filtering only makes sense once a
  * specific day's schedule is on screen, not the month grid itself.
+ *
+ * `walkinServiceId`/`walkinAt` (Walk-In Availability) live here for the same
+ * reason, even though they're required inputs rather than optional filters --
+ * `WalkInControls` (the picker, rendered in this row) and `WalkInAvailability`
+ * (the results, rendered below) both need the same values, and the tab row is
+ * where every other tab's own controls already live rather than a one-off row
+ * of their own.
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
@@ -63,6 +70,7 @@ import { RebookingOpportunitiesTable } from "@/components/patients/RebookingOppo
 import { ScheduleFilters } from "@/components/patients/ScheduleFilters";
 import { TodaysAppointmentsTable } from "@/components/patients/TodaysAppointmentsTable";
 import { WalkInAvailability } from "@/components/patients/WalkInAvailability";
+import { WalkInControls } from "@/components/patients/WalkInControls";
 import type { PatientQueryParams, ScheduleFilterParams } from "@/lib/api";
 import { TABS, type TabKey } from "@/lib/tabs";
 
@@ -126,6 +134,8 @@ function PatientsPageContent() {
   const [calendarSelectedDate, setCalendarSelectedDate] = useState<string | undefined>(undefined);
   const [calendarFilters, setCalendarFilters] = useState<ScheduleFilterParams>({});
   const [rebookingFilters, setRebookingFilters] = useState<ScheduleFilterParams>({});
+  const [walkinServiceId, setWalkinServiceId] = useState<string | undefined>(undefined);
+  const [walkinAt, setWalkinAt] = useState<string | undefined>(undefined);
 
   return (
     <div className="space-y-4">
@@ -181,6 +191,14 @@ function PatientsPageContent() {
             onChange={(next) => setRebookingFilters((prev) => ({ ...prev, ...next }))}
           />
         )}
+        {tab === "walkin" && (
+          <WalkInControls
+            serviceId={walkinServiceId}
+            at={walkinAt}
+            onServiceIdChange={setWalkinServiceId}
+            onAtChange={setWalkinAt}
+          />
+        )}
       </div>
 
       {tab === "today" && (
@@ -197,7 +215,9 @@ function PatientsPageContent() {
           onFiltersChange={(next) => setCalendarFilters((prev) => ({ ...prev, ...next }))}
         />
       )}
-      {tab === "walkin" && <WalkInAvailability />}
+      {tab === "walkin" && (
+        <WalkInAvailability serviceId={walkinServiceId} at={walkinAt} onAtChange={setWalkinAt} />
+      )}
       {tab === "all" && (
         <PatientTable
           filters={patientFilters}
