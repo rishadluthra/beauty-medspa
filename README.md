@@ -3,7 +3,6 @@
 A read-only patient dashboard for Beauty Med Spa, built on top of the client's existing `seed_data/` JSON fixtures. The Front Desk page covers Today's Appointments, a Calendar view, Walk-In Availability, a filterable/sortable All Patients table (with per-column-type operators — text/number/date/enum), and Rebooking Opportunities, plus patient/appointment detail pages. The Analytics page covers the KPIs and visualizations a manager needs (revenue, patient demographics, marketing source, top services, provider utilization, retention/cancellation) plus an ad-hoc custom-graph builder and saveable custom views.
 
 **Live app:** https://frontend-khaki-five-88.vercel.app
-**Backend API:** https://backend-production-1d3cc.up.railway.app
 
 ## Architecture
 
