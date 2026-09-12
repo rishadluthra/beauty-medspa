@@ -100,6 +100,10 @@ class PatientListContext:
     filters: PatientFilters = field(default_factory=PatientFilters)
     sort: str | None = None
     sort_dir: str | None = None
+    # "rebooking"-only: narrows Prev/Next to patients whose LAST visit was this specific
+    # service/provider, matching an active filter on the Rebooking Opportunities worklist.
+    service_id: str | None = None
+    provider_id: str | None = None
 
 
 def _payment_totals_subquery():
@@ -627,7 +631,9 @@ async def get_patient_detail(
         # the dataclass itself (it differs from "all"'s own default just below).
         sort = context.sort or "last_appointment_date"
         sort_dir = context.sort_dir or "desc"
-        previous_patient_id, next_patient_id = await _neighbors_in_rebooking(db, patient_id, sort, sort_dir)
+        previous_patient_id, next_patient_id = await _neighbors_in_rebooking(
+            db, patient_id, sort, sort_dir, context.service_id, context.provider_id,
+        )
     else:
         sort = context.sort or "name"
         sort_dir = context.sort_dir or "asc"
@@ -1011,6 +1017,13 @@ def _rebooking_subqueries(reference_now: datetime):
     and `_neighbors_in_rebooking`, so Prev/Next on that worklist can never disagree with
     what the worklist itself displays. See `list_rebooking_opportunities` for what each
     subquery means and why.
+
+    `last_visit` carries both the display-ready names (`service_name`,
+    `provider_first_name`/`provider_last_name`) AND the raw `service_id`/`provider_id` --
+    the front desk's own rebooking cadence varies wildly by service (a few weeks for some,
+    4-6 months for others), so filtering this worklist down to "just my Botox patients," for
+    instance, needs to match on the real id, not a string-equality match against a
+    formatted display name.
     """
     has_upcoming = (
         select(Appointment.patient_id)
@@ -1023,6 +1036,8 @@ def _rebooking_subqueries(reference_now: datetime):
         select(
             Appointment.patient_id,
             AppointmentService.start,
+            AppointmentService.service_id,
+            AppointmentService.provider_id,
             Service.name.label("service_name"),
             Provider.first_name.label("provider_first_name"),
             Provider.last_name.label("provider_last_name"),
@@ -1074,6 +1089,7 @@ def _rebooking_sort_expressions(sort: str, direction: str, last_visit_sq) -> tup
 async def list_rebooking_opportunities(
     db: AsyncSession, page: int = 1, page_size: int = 25,
     sort: str = "last_appointment_date", sort_dir: str = "desc",
+    service_id: str | None = None, provider_id: str | None = None,
 ) -> RebookingOpportunitiesResponse:
     """List patients who have genuinely gone quiet -- seen before, nothing scheduled going
     forward, AND not seen recently either -- the front desk's outreach/rebooking worklist,
@@ -1106,6 +1122,12 @@ async def list_rebooking_opportunities(
     front desk's rebooking pitch is naturally "you're due for another [service] with
     [provider]," so the list needs the actual service+provider from that visit, not just
     its date.
+
+    `service_id`/`provider_id`, when given, narrow the worklist to patients whose LAST
+    visit was that specific service/provider -- the front desk's actual rebooking cadence
+    varies enormously by service (a few weeks for some, 4-6 months for others), so "show me
+    just my overdue Botox patients" is a real, distinct question from "show me everyone
+    overdue for anything," not something a single fixed staleness floor can answer alone.
     """
     reference_now = await get_reference_now(db)
     has_upcoming, last_visit = _rebooking_subqueries(reference_now)
@@ -1124,8 +1146,12 @@ async def list_rebooking_opportunities(
         .join(last_visit, last_visit.c.patient_id == Patient.id)
         .outerjoin(has_upcoming, has_upcoming.c.patient_id == Patient.id)
         .where(has_upcoming.c.patient_id.is_(None), func.date(last_visit.c.start) <= stale_cutoff_date)
-        .order_by(*_rebooking_sort_expressions(sort, sort_dir, last_visit))
     )
+    if service_id:
+        query = query.where(last_visit.c.service_id == service_id)
+    if provider_id:
+        query = query.where(last_visit.c.provider_id == provider_id)
+    query = query.order_by(*_rebooking_sort_expressions(sort, sort_dir, last_visit))
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
     query = query.offset((page - 1) * page_size).limit(page_size)
@@ -1147,13 +1173,15 @@ async def list_rebooking_opportunities(
 
 async def _neighbors_in_rebooking(
     db: AsyncSession, patient_id: str, sort: str = "last_appointment_date", sort_dir: str = "desc",
+    service_id: str | None = None, provider_id: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Previous/Next `Patient.id` for `get_patient_detail`'s `kind="rebooking"` context:
-    the patient immediately before/after `patient_id` in the same `(sort, sort_dir)`
-    order `list_rebooking_opportunities` displays (most-recent-visit-first by default).
-    Returns `(None, None)` if `patient_id` no longer qualifies for the worklist at all
-    (e.g. they've since been rebooked, or their last visit isn't stale enough yet --
-    see `REBOOKING_STALE_DAYS`).
+    the patient immediately before/after `patient_id` in the same `(sort, sort_dir,
+    service_id, provider_id)` order/scope `list_rebooking_opportunities` displays
+    (most-recent-visit-first by default). Returns `(None, None)` if `patient_id` no longer
+    qualifies for the worklist at all (e.g. they've since been rebooked, their last visit
+    isn't stale enough yet -- see `REBOOKING_STALE_DAYS` -- or they no longer match an
+    active `service_id`/`provider_id` filter).
     """
     reference_now = await get_reference_now(db)
     has_upcoming, last_visit = _rebooking_subqueries(reference_now)
@@ -1164,6 +1192,10 @@ async def _neighbors_in_rebooking(
         .outerjoin(has_upcoming, has_upcoming.c.patient_id == Patient.id)
         .where(has_upcoming.c.patient_id.is_(None), func.date(last_visit.c.start) <= stale_cutoff_date)
     )
+    if service_id:
+        base = base.where(last_visit.c.service_id == service_id)
+    if provider_id:
+        base = base.where(last_visit.c.provider_id == provider_id)
     ranked = base.add_columns(
         func.row_number().over(order_by=_rebooking_sort_expressions(sort, sort_dir, last_visit)).label("rn")
     ).subquery()

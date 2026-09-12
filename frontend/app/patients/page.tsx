@@ -36,9 +36,12 @@
  * a separate row below the tabs -- a row that only exists for a filter
  * used to push every tab's content down an extra row even when that tab
  * had nothing to do with filtering. `patientFilters` (All Patients),
- * `todayFilters` (Today's Appointments), and `calendarFilters` (Calendar's
- * Day View) are all owned here rather than inside their respective table
- * components specifically so their filter controls (`PatientFilters`,
+ * `todayFilters` (Today's Appointments), `calendarFilters` (Calendar's Day
+ * View), and `rebookingFilters` (Rebooking Opportunities -- narrows the
+ * worklist to a specific last-visit service/provider, since real rebooking
+ * cadence varies enormously by service) are all owned here rather than
+ * inside their respective table components specifically so their filter
+ * controls (`PatientFilters`,
  * `ScheduleFilters`) can be rendered in this one shared row while the table
  * components themselves stay plain controlled consumers of that same
  * state. `PatientFilters` and `ScheduleFilters` deliberately share one
@@ -122,6 +125,7 @@ function PatientsPageContent() {
   const [todayFilters, setTodayFilters] = useState<ScheduleFilterParams>({});
   const [calendarSelectedDate, setCalendarSelectedDate] = useState<string | undefined>(undefined);
   const [calendarFilters, setCalendarFilters] = useState<ScheduleFilterParams>({});
+  const [rebookingFilters, setRebookingFilters] = useState<ScheduleFilterParams>({});
 
   return (
     <div className="space-y-4">
@@ -171,6 +175,12 @@ function PatientsPageContent() {
             onChange={(next) => setPatientFilters((prev) => ({ ...prev, ...next }))}
           />
         )}
+        {tab === "rebooking" && (
+          <ScheduleFilters
+            filters={rebookingFilters}
+            onChange={(next) => setRebookingFilters((prev) => ({ ...prev, ...next }))}
+          />
+        )}
       </div>
 
       {tab === "today" && (
@@ -194,7 +204,12 @@ function PatientsPageContent() {
           onFiltersChange={(next) => setPatientFilters((prev) => ({ ...prev, ...next }))}
         />
       )}
-      {tab === "rebooking" && <RebookingOpportunitiesTable />}
+      {tab === "rebooking" && (
+        <RebookingOpportunitiesTable
+          filters={rebookingFilters}
+          onFiltersChange={(next) => setRebookingFilters((prev) => ({ ...prev, ...next }))}
+        />
+      )}
     </div>
   );
 }

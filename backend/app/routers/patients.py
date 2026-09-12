@@ -147,6 +147,8 @@ async def get_rebooking_opportunities(
     page_size: int = Query(25, ge=1, le=100),
     sort: str = "last_appointment_date",
     sort_dir: str = "desc",
+    service_id: str | None = None,
+    provider_id: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> RebookingOpportunitiesResponse:
     """Patients who have been seen before but have nothing scheduled going forward -- the
@@ -155,8 +157,14 @@ async def get_rebooking_opportunities(
     See `list_rebooking_opportunities` for the exact qualifying criteria and default sort
     order (most-recent-visit-first) -- `sort`/`sort_dir` can pick any of its other
     columns instead ("name", "email", "last_service_name", "last_provider_name").
+    `service_id`/`provider_id`, when given, narrow the worklist to patients whose LAST
+    visit was that specific service/provider -- rebooking cadence varies by service, so
+    "everyone overdue for Botox" is a different, real question from "everyone overdue."
     """
-    return await list_rebooking_opportunities(db, page=page, page_size=page_size, sort=sort, sort_dir=sort_dir)
+    return await list_rebooking_opportunities(
+        db, page=page, page_size=page_size, sort=sort, sort_dir=sort_dir,
+        service_id=service_id, provider_id=provider_id,
+    )
 
 
 @router.get("/calendar", response_model=CalendarMonthResponse)
@@ -203,6 +211,8 @@ async def get_patient(
     sort_dir: str | None = None,
     search: str | None = None,
     filters: str | None = Query(None, description="JSON-encoded array of {field, operator, value(s)} conditions"),
+    service_id: str | None = None,
+    provider_id: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> PatientDetailResponse:
     """One patient's full profile plus their complete appointment history, for the Patient Detail page.
@@ -216,12 +226,13 @@ async def get_patient(
 
     `ctx` ("all" | "rebooking") tells the Previous/Next buttons which source list the
     agent actually navigated from, so they walk that list's own order instead of a fixed
-    global one -- see `PatientListContext`. The remaining params are "all"'s own scope:
-    `sort`/`sort_dir`/`search`/`filters`, identical in meaning to `GET /api/patients`.
-    Omitting `sort`/`sort_dir` (a direct link, a global-search result, or any other entry
-    point with no real list to scope to) falls back to each `ctx`'s own natural default
-    order (name-sorted for "all", most-recent-visit-first for "rebooking") -- see
-    `PatientListContext.sort`.
+    global one -- see `PatientListContext`. `sort`/`sort_dir`/`search`/`filters` are
+    "all"'s own scope, identical in meaning to `GET /api/patients`; `service_id`/
+    `provider_id` are "rebooking"'s own scope, identical in meaning to
+    `GET /api/patients/rebooking-opportunities`. Omitting `sort`/`sort_dir` (a direct
+    link, a global-search result, or any other entry point with no real list to scope to)
+    falls back to each `ctx`'s own natural default order (name-sorted for "all", most-
+    recent-visit-first for "rebooking") -- see `PatientListContext.sort`.
     """
     conditions = _parse_filters(filters)
     context = PatientListContext(
@@ -229,6 +240,8 @@ async def get_patient(
         filters=PatientFilters(search=search, filters=conditions),
         sort=sort,
         sort_dir=sort_dir,
+        service_id=service_id,
+        provider_id=provider_id,
     )
     try:
         detail = await get_patient_detail(db, patient_id, context)

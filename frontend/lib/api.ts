@@ -167,8 +167,8 @@ export const api = {
    */
   getUpcomingAppointments: (params: { page?: number; page_size?: number; provider_id?: string; only_tomorrow?: boolean }) =>
     apiGet<UpcomingAppointmentsResponse>("/api/patients/upcoming", { ...params }),
-  /** Fetches a page of the Rebooking Opportunities worklist (seen before, nothing scheduled going forward). Defaults to most-recently-seen first; `sort`/`sort_dir` pick any other column. */
-  getRebookingOpportunities: (params: { page?: number; page_size?: number; sort?: string; sort_dir?: string }) =>
+  /** Fetches a page of the Rebooking Opportunities worklist (seen before, nothing scheduled going forward, and not seen recently either). Defaults to most-recently-seen first; `sort`/`sort_dir` pick any other column; `provider_id`/`service_id` narrow to patients whose LAST visit matched, since real rebooking cadence varies by service. */
+  getRebookingOpportunities: (params: { page?: number; page_size?: number } & ScheduleFilterParams) =>
     apiGet<RebookingOpportunitiesResponse>("/api/patients/rebooking-opportunities", { ...params }),
   /** Fetches every provider, for populating the schedule views' provider filter. */
   getProviders: () => apiGet<ProviderListResponse>("/api/providers"),
@@ -285,6 +285,10 @@ export function patientDetailHref(patientId: string, context?: PatientDetailCont
     if (context.kind === "all") {
       set("search", context.search);
       if (context.filters && context.filters.length > 0) set("filters", JSON.stringify(context.filters));
+    }
+    if (context.kind === "rebooking") {
+      set("provider_id", context.providerId);
+      set("service_id", context.serviceId);
     }
   }
 

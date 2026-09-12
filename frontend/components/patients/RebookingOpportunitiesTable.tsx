@@ -10,45 +10,65 @@
  * the books. Defaults to most-recently-seen first, so the most promising
  * calls are at the top rather than buried under years-stale leads -- every
  * column except Phone is click-to-sort, the same as every other table in this app.
+ *
+ * `filters` (provider/service/sort) is a controlled prop, not local state -- the
+ * same `ScheduleFilters` control Today's Appointments already uses, rendered by
+ * the parent (`PatientsPage`) in the shared tab row, per direct request: real
+ * rebooking cadence varies enormously by service (a few weeks for some
+ * treatments, 4-6 months for others), so a flat 45-day floor across every
+ * service can't tell "overdue for Botox" from "overdue for a quarterly
+ * treatment" -- narrowing by service (and provider) is what makes that
+ * distinction possible.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { SortableTableHeader } from "@/components/SortableTableHeader";
-import { api, patientDetailHref } from "@/lib/api";
-import { formatDate, formatPhone } from "@/lib/format";
+import { api, type ScheduleFilterParams, patientDetailHref } from "@/lib/api";
+import { formatDate, formatPhone, scheduleFilterSuffix } from "@/lib/format";
 import type { PatientDetailContext } from "@/lib/types";
 
 const PAGE_SIZE = 25;
-const DEFAULT_SORT = "last_appointment_date";
-const DEFAULT_SORT_DIR = "desc";
 
-export function RebookingOpportunitiesTable() {
+interface Props {
+  filters: ScheduleFilterParams;
+  onFiltersChange: (next: Partial<ScheduleFilterParams>) => void;
+}
+
+export function RebookingOpportunitiesTable({ filters, onFiltersChange }: Props) {
   const router = useRouter();
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState(DEFAULT_SORT);
-  const [sortDir, setSortDir] = useState(DEFAULT_SORT_DIR);
+  const { provider_id: providerId, service_id: serviceId } = filters;
+  // Defaulted locally (not just left `undefined`) since `SortableTableHeader` needs a
+  // real, always-defined "currently active sort" to compare each column against.
+  const sort = filters.sort ?? "last_appointment_date";
+  const sortDir = filters.sort_dir ?? "desc";
+
+  // `filters` comes from the parent (rendered in the shared tab row), so resetting back
+  // to page 1 on a filter change can't happen inline in an onChange handler -- this
+  // effect does the equivalent whenever the filters actually change, the same pattern
+  // `TodaysAppointmentsTable` already uses for the identical reason.
+  useEffect(() => {
+    setPage(1);
+  }, [providerId, serviceId, sort, sortDir]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["patients", "rebooking-opportunities", page, sort, sortDir],
-    queryFn: () => api.getRebookingOpportunities({ page, page_size: PAGE_SIZE, sort, sort_dir: sortDir }),
+    queryKey: ["patients", "rebooking-opportunities", page, providerId, serviceId, sort, sortDir],
+    queryFn: () => api.getRebookingOpportunities({
+      page, page_size: PAGE_SIZE, provider_id: providerId, service_id: serviceId, sort, sort_dir: sortDir,
+    }),
   });
 
   function handleSort(key: string) {
-    if (sort === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSort(key);
-      setSortDir("asc");
-    }
-    setPage(1);
+    onFiltersChange(sort === key ? { sort: key, sort_dir: sortDir === "asc" ? "desc" : "asc" } : { sort: key, sort_dir: "asc" });
   }
 
-  // Same sort/sort_dir the worklist is currently showing -- so the detail page's
-  // Previous/Next buttons walk this exact order.
-  const context: PatientDetailContext = { kind: "rebooking", sort, sortDir };
+  // Same sort/sort_dir/provider/service the worklist is currently showing -- so the
+  // detail page's Previous/Next buttons walk this exact scoped order.
+  const context: PatientDetailContext = { kind: "rebooking", sort, sortDir, providerId, serviceId };
+  const emptyMessage = `No patients currently need rebooking${scheduleFilterSuffix(!!providerId, !!serviceId)}.`;
 
   return (
     <div className="space-y-4">
@@ -80,7 +100,7 @@ export function RebookingOpportunitiesTable() {
                 {data.items.length === 0 && (
                   <tr>
                     <td colSpan={6} className="p-6 text-center text-brand-sage">
-                      No patients currently need rebooking.
+                      {emptyMessage}
                     </td>
                   </tr>
                 )}
@@ -106,7 +126,7 @@ export function RebookingOpportunitiesTable() {
           <div className="space-y-2 sm:hidden">
             {data.items.length === 0 && (
               <p className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-6 text-center text-brand-sage shadow-lg shadow-brand-gold/10">
-                No patients currently need rebooking.
+                {emptyMessage}
               </p>
             )}
             {data.items.map((item) => (

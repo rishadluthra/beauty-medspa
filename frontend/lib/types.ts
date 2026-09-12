@@ -178,7 +178,14 @@ export type PatientDetailContext =
       /** The generic per-column filter list -- see `lib/patientFilters.ts`. */
       filters?: PatientFilterCondition[];
     }
-  | { kind: "rebooking"; sort?: string; sortDir?: string };
+  | {
+      kind: "rebooking";
+      sort?: string;
+      sortDir?: string;
+      /** Narrows to patients whose LAST visit matched -- real rebooking cadence varies by service. */
+      providerId?: string;
+      serviceId?: string;
+    };
 
 /**
  * Which schedule window (Today's Appointments, or a specific Calendar day) a schedule

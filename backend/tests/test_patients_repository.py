@@ -555,6 +555,46 @@ async def test_get_patient_detail_rebooking_context_scopes_previous_next_to_rebo
     assert by_name.next_patient_id == "pat_a"  # "Zed Zeta" sorts after
 
 
+async def test_get_patient_detail_rebooking_context_scopes_previous_next_to_an_active_service_filter(db_session):
+    """`PatientListContext(kind="rebooking", service_id=...)` scopes Previous/Next to only
+    the patients matching that filter -- mirroring an active service filter on the
+    Rebooking Opportunities worklist itself, so a detail page opened from a filtered list
+    can't silently walk into patients outside that filter.
+    """
+    db_session.add_all([
+        make_patient(id="pat_botox_1", first_name="Ann", last_name="Botox"),
+        make_patient(id="pat_botox_2", first_name="Ben", last_name="Botox"),
+        make_patient(id="pat_facial", first_name="Cat", last_name="Facial"),
+        make_patient(id="pat_anchor", first_name="Anna", last_name="Anchor"),  # sets the latest data months only
+        make_provider(id="prv_1"), make_service(id="svc_botox", name="Botox Injection"), make_service(id="svc_facial", name="Facial Treatment"),
+        make_appointment(id="apt_botox_1", patient_id="pat_botox_1", status="confirmed"),
+        make_appointment(id="apt_botox_2", patient_id="pat_botox_2", status="confirmed"),
+        make_appointment(id="apt_facial", patient_id="pat_facial", status="confirmed"),
+        make_appointment(id="apt_month_jan", patient_id="pat_anchor", status="confirmed"),
+        make_appointment(id="apt_month_feb", patient_id="pat_anchor", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(appointment_id="apt_botox_1", service_id="svc_botox", start=datetime(2025, 11, 10, 9, 0), end=datetime(2025, 11, 10, 9, 30)),
+        make_appointment_service(appointment_id="apt_botox_2", service_id="svc_botox", start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30)),
+        # Sorts between the two Botox visits by date, but isn't Botox -- must never appear
+        # as a Previous/Next neighbor once the service filter is active.
+        make_appointment_service(appointment_id="apt_facial", service_id="svc_facial", start=datetime(2025, 11, 5, 9, 0), end=datetime(2025, 11, 5, 9, 30)),
+        make_appointment_service(appointment_id="apt_month_jan", service_id="svc_botox", start=datetime(2026, 1, 5, 10, 0), end=datetime(2026, 1, 5, 10, 30)),
+        make_appointment_service(appointment_id="apt_month_feb", service_id="svc_botox", start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30)),
+    ])
+    await db_session.commit()
+
+    detail = await get_patient_detail(db_session, "pat_botox_1", context=PatientListContext(kind="rebooking", service_id="svc_botox"))
+    assert detail.previous_patient_id is None
+    assert detail.next_patient_id == "pat_botox_2"  # pat_facial is skipped -- doesn't match the filter
+
+    # A patient who doesn't match the active filter isn't part of this scoped list at all.
+    excluded = await get_patient_detail(db_session, "pat_facial", context=PatientListContext(kind="rebooking", service_id="svc_botox"))
+    assert excluded.previous_patient_id is None
+    assert excluded.next_patient_id is None
+
+
 async def test_list_upcoming_appointments_anchors_to_first_of_second_to_last_data_month(db_session):
     """reference_date is the 1st of the second-to-last *distinct calendar month that has
     any scheduled appointment* -- not literally "one month back" regardless of whether
@@ -1235,6 +1275,64 @@ async def test_list_rebooking_opportunities_enforces_the_stale_days_floor(db_ses
 
     assert result.reference_date == date(2026, 1, 1)
     assert [item.id for item in result.items] == ["pat_boundary"]  # only the one that's stale enough
+
+
+async def test_list_rebooking_opportunities_service_and_provider_filters_match_the_last_visit(db_session):
+    """`service_id`/`provider_id` narrow the worklist to patients whose LAST visit was that
+    specific service/provider -- real rebooking cadence varies by service (a few weeks for
+    some, 4-6 months for others), so "just my overdue Botox patients" is a genuinely
+    different question from "everyone overdue."
+
+    pat_botox and pat_facial both qualify for the unfiltered worklist (stale, nothing
+    upcoming); their last visits used different services AND different providers, so
+    filtering by either dimension must isolate exactly one of them, and combining both
+    filters (matching pat_botox on both) must still return exactly pat_botox, not empty.
+    """
+    db_session.add_all([
+        make_patient(id="pat_botox", first_name="Bea", last_name="Botox"),
+        make_patient(id="pat_facial", first_name="Fay", last_name="Facial"),
+        make_patient(id="pat_anchor", first_name="Anna", last_name="Anchor"),  # sets the latest data months only
+        make_provider(id="prv_botox", first_name="Barry", last_name="Botox"),
+        make_provider(id="prv_facial", first_name="Fern", last_name="Facial"),
+        make_service(id="svc_botox", name="Botox Injection"),
+        make_service(id="svc_facial", name="Facial Treatment"),
+        make_appointment(id="apt_botox", patient_id="pat_botox", status="confirmed"),
+        make_appointment(id="apt_facial", patient_id="pat_facial", status="confirmed"),
+        make_appointment(id="apt_month_jan", patient_id="pat_anchor", status="confirmed"),
+        make_appointment(id="apt_month_feb", patient_id="pat_anchor", status="confirmed"),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        make_appointment_service(
+            appointment_id="apt_botox", service_id="svc_botox", provider_id="prv_botox",
+            start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30),
+        ),
+        make_appointment_service(
+            appointment_id="apt_facial", service_id="svc_facial", provider_id="prv_facial",
+            start=datetime(2025, 11, 1, 9, 0), end=datetime(2025, 11, 1, 9, 30),
+        ),
+        make_appointment_service(
+            appointment_id="apt_month_jan", service_id="svc_botox", provider_id="prv_botox",
+            start=datetime(2026, 1, 5, 10, 0), end=datetime(2026, 1, 5, 10, 30),
+        ),
+        make_appointment_service(
+            appointment_id="apt_month_feb", service_id="svc_botox", provider_id="prv_botox",
+            start=datetime(2026, 2, 1, 10, 0), end=datetime(2026, 2, 1, 10, 30),
+        ),
+    ])
+    await db_session.commit()
+
+    by_service = await list_rebooking_opportunities(db_session, service_id="svc_botox")
+    assert [item.id for item in by_service.items] == ["pat_botox"]
+
+    by_provider = await list_rebooking_opportunities(db_session, provider_id="prv_facial")
+    assert [item.id for item in by_provider.items] == ["pat_facial"]
+
+    by_both = await list_rebooking_opportunities(db_session, service_id="svc_botox", provider_id="prv_botox")
+    assert [item.id for item in by_both.items] == ["pat_botox"]
+
+    by_mismatched_pair = await list_rebooking_opportunities(db_session, service_id="svc_botox", provider_id="prv_facial")
+    assert by_mismatched_pair.items == []  # no one's last visit was Botox AND with the Facial provider
 
 
 async def test_list_rebooking_opportunities_sort_and_sort_dir_support_every_column(db_session):
