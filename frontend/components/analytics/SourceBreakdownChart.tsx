@@ -5,17 +5,23 @@
  * (in_person/phone/instagram/tiktok/google/website). Data comes from
  * GET /analytics/patients-by-source via `api.getPatientsBySource`.
  *
- * Each slice's own count is drawn as a small frosted-glass chip INSIDE that
- * slice, holding the exact same icon `SourceBadge` uses for that source
- * (via `getSourceIcon`) plus the count itself, both tinted in that
+ * Each slice's own count is drawn as a small frosted-glass chip OUTSIDE
+ * that slice (just past its outer edge, at its own slice's angle -- not
+ * inside it), holding the exact same icon `SourceBadge` uses for that
+ * source (via `getSourceIcon`) plus the count itself, both tinted in that
  * source's own chart color -- not a plain white number, and not a
  * separate Legend below the chart. Per direct feedback: the previous
  * white in-slice numbers, the white 1px border Recharts draws between
  * slices by default, and the Legend all read as visual noise on top of a
  * chart whose whole point is "which color/source is which" -- putting the
  * source's own icon (already the established way this app identifies a
- * source, see the All Patients table) directly on its own slice answers
- * that without needing a separate key at all.
+ * source, see the All Patients table) directly outside its own slice
+ * answers that without needing a separate key at all. The labels were
+ * originally placed INSIDE each slice instead; moved outside per direct
+ * follow-up feedback ("properly spaced and symmetrical") -- `outerRadius`
+ * was shrunk from 100 to 75 to leave the pie's own footprint enough room
+ * for the ring of outside labels to sit within the same fixed chart height
+ * without clipping.
  */
 
 import { cloneElement, isValidElement } from "react";
@@ -30,13 +36,20 @@ import { getSourceIcon } from "@/lib/sourceIcons";
 const RADIAN = Math.PI / 180;
 const LABEL_WIDTH = 60;
 const LABEL_HEIGHT = 26;
+// How far past the slice's own outer edge each label sits -- a fixed gap
+// (not a fraction of the radius) so every label sits the same visual
+// distance off the pie regardless of slice size, which is what actually
+// reads as "evenly spaced/symmetrical" around the ring rather than each
+// slice's own radius (all equal here anyway, since every slice shares one
+// `outerRadius`) doing that on its own.
+const LABEL_GAP = 22;
 
 /**
  * Renders one slice's data label as an HTML chip (via `foreignObject`, not
  * plain SVG `<text>`) so it can use real Tailwind classes -- specifically
- * `backdrop-blur`, which plain SVG has no equivalent for -- centered two-
- * thirds of the way from the pie's center to its outer edge, same
- * placement this chart's labels have always used.
+ * `backdrop-blur`, which plain SVG has no equivalent for -- centered just
+ * outside the slice's own outer edge (at `outerRadius + LABEL_GAP`, along
+ * that slice's own `midAngle`) rather than inside it.
  *
  * `payload` here is one row of `chartData` below, which deliberately keeps
  * the RAW `source` value (as `rawSource`) alongside the formatted display
@@ -44,11 +57,11 @@ const LABEL_HEIGHT = 26;
  * backend enum value (e.g. "in_person"), not the formatted label.
  */
 function renderSourceGlassLabel(props: PieLabelRenderProps) {
-  const { cx, cy, midAngle, innerRadius, outerRadius, value, payload } = props;
+  const { cx, cy, midAngle, outerRadius, value, payload } = props;
   const rawSource = (payload as { rawSource: string }).rawSource;
   const color = getSourceChartColor(rawSource);
 
-  const radius = Number(innerRadius) + (Number(outerRadius) - Number(innerRadius)) * 0.65;
+  const radius = Number(outerRadius) + LABEL_GAP;
   const angle = -(Number(midAngle) || 0) * RADIAN;
   const x = Number(cx) + radius * Math.cos(angle);
   const y = Number(cy) + radius * Math.sin(angle);
@@ -95,8 +108,14 @@ export function SourceBreakdownChart() {
     <div className="rounded-2xl border border-brand-gold/10 bg-brand-bg p-5 text-brand-dark shadow-lg shadow-brand-gold/10">
       <h2 className="mb-4 font-medium text-brand-dark">How Patients Find Us</h2>
       <ResponsiveContainer width="100%" height={280}>
-        <PieChart>
-          <Pie data={chartData} dataKey="patient_count" nameKey="source" outerRadius={100} label={renderSourceGlassLabel} labelLine={false}>
+        {/*
+          Margin gives the outside-the-pie labels room to breathe on every
+          side without the `foreignObject`s clipping against the chart's own
+          edge -- needed now that labels sit past `outerRadius` instead of
+          inside it.
+        */}
+        <PieChart margin={{ top: 20, right: 40, bottom: 20, left: 40 }}>
+          <Pie data={chartData} dataKey="patient_count" nameKey="source" outerRadius={75} label={renderSourceGlassLabel} labelLine={false}>
             {/*
               `stroke="none"` removes Recharts' default white 1px border
               between slices -- per direct feedback that separator read as
